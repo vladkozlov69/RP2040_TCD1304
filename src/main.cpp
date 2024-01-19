@@ -2,11 +2,7 @@
 #include "pins_arduino.h"
 #include "pinDefinitions.h"
 #include "hardware/adc.h"
-#include "hardware/dma.h"
 #include "RP2040_PWM.h"
-// extern "C" {
-// #include <pico/stdlib.h>
-// };
 
 #define PIXEL_COUNT 3691
 #define MAX_EXPOSURE_TIME 800000UL
@@ -50,8 +46,7 @@ char buf[250];
 
 void setup() 
 {
-    // setCpuFrequency(100);
-    SerialUSB.begin(9600);
+    SerialUSB.begin(115200);
 
     pinMode(SH_PIN, OUTPUT);
     pinMode(ICG_PIN, OUTPUT);
@@ -120,16 +115,14 @@ void loop()
     {
         // decrease exposure
         exposureTime = max(exposureTime / 1.618, 10);
-        // if (exposureTime < 10) exposureTime = 10;
     } 
     else if (lowestCCDVoltage > 1500)
     {
         // increase exposure
         exposureTime = min(exposureTime * 1.618, MAX_EXPOSURE_TIME);
-        // if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
     }
 
-    delayMicroseconds(max(exposureTime/* - readTime*/, 10UL));
+    delayMicroseconds(max(exposureTime - readTime, 10L));
 }
 
 uint32_t readCCDInternal(int pixelsToRead, bool sync=false)

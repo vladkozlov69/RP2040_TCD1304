@@ -1,3 +1,11 @@
+/****************************************************************************************************************************
+  RP2040 driver for TCD1304
+
+  Written by Vladimir Kozlov https://github.com/vladkozlov69/RP2040_TCD1304
+  Licensed under MIT license
+*****************************************************************************************************************************/
+
+
 #include <Arduino.h>
 #include "pins_arduino.h"
 #include "pinDefinitions.h"

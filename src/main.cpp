@@ -18,13 +18,9 @@
 
 #define CAPTURE_CHANNEL 0
 #define CLOCK_DIV 96
-#define LED_PIN 25
+#define LED_PIN LED_BUILTIN
 
 #define ADC_FLAG_PIN    LED_PIN
-#define SH_PIN          14
-#define ICG_PIN         15
-#define CLK_PIN         16
-#define ADC_SYNC_PIN    18
 
 #define BITSET_SH           gpio_put(SH_PIN, 1)
 #define BITCLR_SH           gpio_put(SH_PIN, 0)
@@ -62,7 +58,7 @@ void setup()
     digitalWrite(LED_PIN, HIGH);
 
 
-    adc_gpio_init(26 + CAPTURE_CHANNEL);
+    adc_gpio_init(ADC_PIN + CAPTURE_CHANNEL);
     adc_init();
     adc_select_input(CAPTURE_CHANNEL);
     adc_set_clkdiv(CLOCK_DIV);
@@ -80,7 +76,7 @@ void setup()
 
 unsigned long copyTimer = 0;
 
-constexpr int pixel_agg_power = 3;
+constexpr int pixel_agg_power = 0;
 
 constexpr int pixel_agg = 1 << pixel_agg_power;
 constexpr int pixel_iter = PIXEL_COUNT / pixel_agg;

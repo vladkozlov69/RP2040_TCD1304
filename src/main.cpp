@@ -12,6 +12,7 @@
 #include "hardware/adc.h"
 #include "RP2040_PWM.h"
 #include "SpectralTool.h"
+#include "Calibration.h"
 
 #define PIXEL_COUNT 3691
 #define MAX_EXPOSURE_TIME 800000UL
@@ -52,6 +53,21 @@ char buf[250];
 Spectrum sp;
 SpectralTool st;
 RI ri;
+
+SENSOR_CALIBRATION SensorCalibration = {
+    .R = {
+        .wavelength = DEFAULT_CALIBRATION_RED_WAVELENGTH,
+        .pixelNum = DEFAULT_CALIBRATION_RED_PIXEL
+    },
+    .G = {
+        .wavelength = DEFAULT_CALIBRATION_GREEN_WAVELENGTH,
+        .pixelNum = DEFAULT_CALIBRATION_GREEN_PIXEL
+    }, 
+    .B = {
+        .wavelength = DEFAULT_CALIBRATION_BLUE_WAVELENGTH,
+        .pixelNum = DEFAULT_CALIBRATION_BLUE_PIXEL
+    }
+};
 
 void setup() 
 {

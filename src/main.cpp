@@ -124,6 +124,9 @@ void loop()
 
             adcSum = adcSum >> pixel_agg_power;
             adcSum = adcSum / readCycleCount;
+
+            sp.insert({getWavelength(SensorCalibration, pixelNum) , adcSum});
+
             SerialUSB.println(adcSum);
         }
         snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu, readCycleCount=%ld\r\n", 
@@ -132,6 +135,38 @@ void loop()
         
         readCycleCount = 0;  // skip first
         memset(buffer, 0, sizeof(buffer));
+
+        // TODO here we have 'sp' populated with values so we can calculate CCT, CRI, Ri etc.
+        Spectrum toProcess = st.transpose(sp);
+        st.normalize(toProcess);
+        XY XYcoord = st.calcXY(toProcess);
+        float CCT = st.calcCCT(XYcoord);
+
+        SerialUSB.print("#REM CCT=");
+        SerialUSB.println(CCT);
+
+        float DUV = st.calcDUV(XYcoord);
+
+        SerialUSB.print("#REM DUV=");
+        SerialUSB.println(DUV, 6);
+
+        memset(ri, 0, sizeof(ri));
+        st.calcCRI(toProcess, ri);
+
+        float Ra=0, Re=0;
+        for (int q = 0; q < 15; q++) 
+        {
+            if (q < 8) 
+            {
+                Ra = Ra + ri[q];
+            }
+            Re = Re + ri[q];
+        }
+        Ra = Ra / 8;
+        Re = Re / 15;
+
+        snprintf(buf, sizeof(buf), "#REM CCT=%d Ra=%d Re=%d", (int)CCT, (int)Ra, (int)Re);
+        SerialUSB.println(buf);
 
         copyTimer = millis();
     }

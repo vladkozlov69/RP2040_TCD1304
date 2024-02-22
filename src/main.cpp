@@ -11,6 +11,7 @@
 #include "pinDefinitions.h"
 #include "hardware/adc.h"
 #include "RP2040_PWM.h"
+#include "SpectralTool.h"
 
 #define PIXEL_COUNT 3691
 #define MAX_EXPOSURE_TIME 800000UL
@@ -47,6 +48,10 @@ void setupTimer(PinName pin, uint32_t ovfCounter);
 void readCCD(void);
 
 char buf[250];
+
+Spectrum sp;
+SpectralTool st;
+RI ri;
 
 void setup() 
 {
@@ -88,6 +93,8 @@ void loop()
         unsigned long writeStart = micros();
         snprintf(buf, sizeof(buf), "#START adcF=%lu, exposureTime=%ld\r\n", adcFreq, exposureTime);
         SerialUSB.print(buf);
+
+        sp.clear();
         
         for (int i = 0; i < pixel_iter; ++i)
         {

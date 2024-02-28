@@ -120,7 +120,7 @@ constexpr int pixel_iter = PIXEL_COUNT / pixel_agg;
 
 void loop() 
 {
-    if (readCycleCount >= 6)
+    if (readCycleCount >= 3)
     {
         unsigned long writeStart = micros();
         snprintf(buf, sizeof(buf), "#START adcF=%lu, lowestCCDVoltage=%d, exposureTime=%ld\r\n", 
@@ -128,12 +128,21 @@ void loop()
         SerialUSB.print(buf);
 
         // normalize values
-        uint32_t tmpVal, maxVal = 0;
-        uint32_t minVal = 10000;
-        size_t tmpPos, maxPos, minPos;
+        uint32_t maxVoltage = 0, maxVal = 0, minVal = 10000;
+        size_t maxPos = 0, minPos = 0;
         for (int i = 0; i < PIXEL_COUNT; i++)
         {
             buffer[i] = buffer[i] / readCycleCount;
+            if (buffer[i] > maxVoltage) 
+            {
+                maxVoltage = buffer[i];
+            }
+        }
+
+        for (int i = 0; i < PIXEL_COUNT; i++)
+        {
+            buffer[i] = maxVoltage - buffer[i];
+
             if (buffer[i] > maxVal) 
             {
                 maxVal = buffer[i];
@@ -145,18 +154,6 @@ void loop()
                 minPos = i;
             }
         }
-
-        for (int i = 0; i < PIXEL_COUNT; i++)
-        {
-            buffer[i] = maxVal - buffer[i];
-
-            // SerialUSB.print(i);
-            // SerialUSB.print(",");
-            // SerialUSB.println(buffer[i], 4);
-        }
-
-        tmpPos = maxPos; maxPos = minPos; minPos = tmpPos;
-        tmpVal = maxVal; maxVal = minVal; minVal = tmpVal;
 
         sp.clear();
         int prevWavelength = 0;
@@ -268,10 +265,16 @@ void loop()
         // reset exposure
         exposureTime = MIN_EXPOSURE_TIME; 
     } 
-    else if (lowestCCDVoltage > 1900)
+    else if (lowestCCDVoltage > 2200)
     {
-        // increase exposure
+        // increase exposure   
         exposureTime = min(exposureTime * 2, MAX_EXPOSURE_TIME);
+        SerialUSB.println("#REM Increase exposure twice");
+    }
+    else if (lowestCCDVoltage > 1700)
+    {
+        exposureTime = min(exposureTime * 1600 / (2900 - lowestCCDVoltage), MAX_EXPOSURE_TIME);
+        SerialUSB.println("#REM Increase exposure proportionally");
     }
 
     delayMicroseconds(max(exposureTime - readTime, 10L));

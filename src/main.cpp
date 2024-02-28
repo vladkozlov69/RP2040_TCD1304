@@ -265,13 +265,13 @@ void loop()
         // reset exposure
         exposureTime = MIN_EXPOSURE_TIME; 
     } 
-    else if (lowestCCDVoltage > 2200)
+    else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME)
     {
         // increase exposure   
-        exposureTime = min(exposureTime * 2, MAX_EXPOSURE_TIME);
-        SerialUSB.println("#REM Increase exposure twice");
+        exposureTime = min(exposureTime * 4, MAX_EXPOSURE_TIME);
+        SerialUSB.println("#REM Increase exposure x4");
     }
-    else if (lowestCCDVoltage > 1700)
+    else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME)
     {
         exposureTime = min(exposureTime * 1600 / (2900 - lowestCCDVoltage), MAX_EXPOSURE_TIME);
         SerialUSB.println("#REM Increase exposure proportionally");

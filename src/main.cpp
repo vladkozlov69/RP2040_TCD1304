@@ -15,6 +15,7 @@
 #include "Calibration.h"
 
 #define PIXEL_COUNT 3691
+#define MIN_EXPOSURE_TIME 10UL
 #define MAX_EXPOSURE_TIME 800000UL
 #define MAX_READ_CYCLE_COUNT 10000
 
@@ -38,7 +39,7 @@ RP2040_PWM * PWM_ADC_SYNC;
 uint32_t buffer[PIXEL_COUNT];
 
 int32_t readCycleCount = -3;
-int32_t exposureTime = 100, readTime;
+int32_t exposureTime = MIN_EXPOSURE_TIME, readTime;
 uint32_t adcFreq;
 uint16_t lowestCCDVoltage;
 
@@ -51,8 +52,24 @@ void readCCD(void);
 char buf[250];
 
 Spectrum sp;
+Spectrum sp1;
 SpectralTool st;
 RI ri;
+
+
+
+TCD1304_SpectralResponse tcd1304SR[] = {
+    {.wl = 380, .coef = 0.70},
+    {.wl = 400, .coef = 0.80},
+    {.wl = 450, .coef = 0.93},
+    {.wl = 500, .coef = 0.98},
+    {.wl = 550, .coef = 0.99},
+    {.wl = 600, .coef = 0.97},
+    {.wl = 650, .coef = 0.92},
+    {.wl = 700, .coef = 0.8},
+    {.wl = 750, .coef = 0.63},
+    {.wl = 800, .coef = 0.45}
+};
 
 SENSOR_CALIBRATION SensorCalibration = {
     .R = {
@@ -71,7 +88,7 @@ SENSOR_CALIBRATION SensorCalibration = {
 
 void setup() 
 {
-    SerialUSB.begin(115200);
+    SerialUSB.begin(230400);
 
     pinMode(SH_PIN, OUTPUT);
     pinMode(ICG_PIN, OUTPUT);
@@ -104,31 +121,98 @@ constexpr int pixel_iter = PIXEL_COUNT / pixel_agg;
 
 void loop() 
 {
-    if (millis() - copyTimer >= 1000)
+    if (readCycleCount >= 6)
     {
         unsigned long writeStart = micros();
-        snprintf(buf, sizeof(buf), "#START adcF=%lu, exposureTime=%ld\r\n", adcFreq, exposureTime);
+        snprintf(buf, sizeof(buf), "#START adcF=%lu, lowestCCDVoltage=%d, exposureTime=%ld\r\n", 
+            adcFreq, lowestCCDVoltage, exposureTime);
         SerialUSB.print(buf);
 
-        sp.clear();
-        
-        for (int i = 0; i < pixel_iter; ++i)
+        // normalize values
+        uint32_t tmpVal, maxVal = 0;
+        uint32_t minVal = 10000;
+        size_t tmpPos, maxPos, minPos;
+        for (int i = 0; i < PIXEL_COUNT; i++)
         {
-            int pixelNum = i * pixel_agg;
-            long adcSum = 0;
-
-            for (int j = 0; j < pixel_agg; j++)
+            buffer[i] = buffer[i] / readCycleCount;
+            if (buffer[i] > maxVal) 
             {
-                adcSum = adcSum + buffer[pixelNum + j];
+                maxVal = buffer[i];
+                maxPos = i;
             }
-
-            adcSum = adcSum >> pixel_agg_power;
-            adcSum = adcSum / readCycleCount;
-
-            sp.insert({getWavelength(SensorCalibration, pixelNum) , adcSum});
-
-            SerialUSB.println(adcSum);
+            if (buffer[i] < minVal) 
+            {
+                minVal = buffer[i];
+                minPos = i;
+            }
         }
+
+        for (int i = 0; i < PIXEL_COUNT; i++)
+        {
+            buffer[i] = maxVal - buffer[i];
+
+            // SerialUSB.print(i);
+            // SerialUSB.print(",");
+            // SerialUSB.println(buffer[i], 4);
+        }
+
+        tmpPos = maxPos; maxPos = minPos; minPos = tmpPos;
+        tmpVal = maxVal; maxVal = minVal; minVal = tmpVal;
+
+        sp.clear();
+        sp1.clear();
+        int prevWavelength = 0;
+        int countWavelength = 0;
+        float sumPerWavelength = 0;
+        
+        for (int i = 0; i < PIXEL_COUNT; ++i)
+        {
+            // aggregate rounded wavelenghts as we have ~3..4 values per nm
+            int waveLenght = (int) getWavelength(SensorCalibration, i);
+            if (prevWavelength == waveLenght)
+            {
+                countWavelength++;
+                sumPerWavelength += buffer[i];
+            }
+            else
+            {
+                if (prevWavelength > 0 && countWavelength > 0)
+                {
+                    if (prevWavelength >= 380 && prevWavelength <= 780)
+                    {
+                        float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength);
+                        // SerialUSB.print(prevWavelength);
+                        // SerialUSB.print(" => ");
+                        // SerialUSB.println(coef, 4);
+                        sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
+                        sp1.insert({prevWavelength, sumPerWavelength/countWavelength});
+                    }
+                }
+                prevWavelength = waveLenght;
+                countWavelength = 1;
+                sumPerWavelength = buffer[i];    
+            }
+        }
+
+        if (prevWavelength >= 380 && prevWavelength <= 780)
+        {
+            float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength);
+            // SerialUSB.print(prevWavelength);
+            // SerialUSB.print(" => ");
+            // SerialUSB.println(coef, 4);
+            sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
+            sp1.insert({prevWavelength, sumPerWavelength/countWavelength});
+        }
+
+        for (auto const& spElement : sp)
+        {
+            SerialUSB.print(spElement.first);
+            SerialUSB.print(",");
+            SerialUSB.print(spElement.second, 4);
+            SerialUSB.print(",");
+            SerialUSB.println(sp1.find(spElement.first)->second, 4);
+        }
+
         snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu, readCycleCount=%ld\r\n", 
             pixel_iter, readTime, micros() - writeStart, waitLoops, readCycleCount);
         SerialUSB.print(buf);
@@ -139,6 +223,15 @@ void loop()
         // TODO here we have 'sp' populated with values so we can calculate CCT, CRI, Ri etc.
         Spectrum toProcess = st.transpose(sp);
         st.normalize(toProcess);
+
+        // for (auto const& spElement : toProcess)
+        // {
+        //     SerialUSB.print(spElement.first);
+        //     SerialUSB.print(",");
+        //     SerialUSB.println(spElement.second, 4);
+        // }
+
+
         XY XYcoord = st.calcXY(toProcess);
         float CCT = st.calcCCT(XYcoord);
 
@@ -165,7 +258,8 @@ void loop()
         Ra = Ra / 8;
         Re = Re / 15;
 
-        snprintf(buf, sizeof(buf), "#REM CCT=%d Ra=%d Re=%d", (int)CCT, (int)Ra, (int)Re);
+        snprintf(buf, sizeof(buf), "#REM CCT=%d Ra=%d Re=%d MIN=%lu@%d MAX=%lu@%d", 
+            (int)CCT, (int)Ra, (int)Re, minVal, minPos, maxVal, maxPos);
         SerialUSB.println(buf);
 
         copyTimer = millis();
@@ -175,13 +269,13 @@ void loop()
 
     if (lowestCCDVoltage < 1100) 
     {
-        // decrease exposure
-        exposureTime = max(exposureTime / 1.618, 10);
+        // reset exposure
+        exposureTime = MIN_EXPOSURE_TIME; 
     } 
-    else if (lowestCCDVoltage > 1500)
+    else if (lowestCCDVoltage > 1900)
     {
         // increase exposure
-        exposureTime = min(exposureTime * 1.618, MAX_EXPOSURE_TIME);
+        exposureTime = min(exposureTime * 2, MAX_EXPOSURE_TIME);
     }
 
     delayMicroseconds(max(exposureTime - readTime, 10L));

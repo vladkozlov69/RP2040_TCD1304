@@ -52,7 +52,6 @@ void readCCD(void);
 char buf[250];
 
 Spectrum sp;
-Spectrum sp1;
 SpectralTool st;
 RI ri;
 
@@ -160,7 +159,6 @@ void loop()
         tmpVal = maxVal; maxVal = minVal; minVal = tmpVal;
 
         sp.clear();
-        sp1.clear();
         int prevWavelength = 0;
         int countWavelength = 0;
         float sumPerWavelength = 0;
@@ -185,7 +183,6 @@ void loop()
                         // SerialUSB.print(" => ");
                         // SerialUSB.println(coef, 4);
                         sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
-                        sp1.insert({prevWavelength, sumPerWavelength/countWavelength});
                     }
                 }
                 prevWavelength = waveLenght;
@@ -201,17 +198,16 @@ void loop()
             // SerialUSB.print(" => ");
             // SerialUSB.println(coef, 4);
             sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
-            sp1.insert({prevWavelength, sumPerWavelength/countWavelength});
         }
 
-        for (auto const& spElement : sp)
-        {
-            SerialUSB.print(spElement.first);
-            SerialUSB.print(",");
-            SerialUSB.print(spElement.second, 4);
-            SerialUSB.print(",");
-            SerialUSB.println(sp1.find(spElement.first)->second, 4);
-        }
+        // for (auto const& spElement : sp)
+        // {
+        //     SerialUSB.print(spElement.first);
+        //     SerialUSB.print(",");
+        //     SerialUSB.print(spElement.second, 4);
+        //     SerialUSB.print(",");
+        //     SerialUSB.println(sp1.find(spElement.first)->second, 4);
+        // }
 
         snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu, readCycleCount=%ld\r\n", 
             pixel_iter, readTime, micros() - writeStart, waitLoops, readCycleCount);
@@ -224,12 +220,12 @@ void loop()
         Spectrum toProcess = st.transpose(sp);
         st.normalize(toProcess);
 
-        // for (auto const& spElement : toProcess)
-        // {
-        //     SerialUSB.print(spElement.first);
-        //     SerialUSB.print(",");
-        //     SerialUSB.println(spElement.second, 4);
-        // }
+        for (auto const& spElement : toProcess)
+        {
+            SerialUSB.print(spElement.first);
+            SerialUSB.print(",");
+            SerialUSB.println(spElement.second, 4);
+        }
 
 
         XY XYcoord = st.calcXY(toProcess);

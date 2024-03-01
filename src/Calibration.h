@@ -2,7 +2,7 @@
 
 #include <Arduino.h>
 
-static const uint16_t DEFAULT_CALIBRATION_BLUE_PIXEL = 2433;
+static const uint16_t DEFAULT_CALIBRATION_BLUE_PIXEL = 2410;
 static const uint16_t DEFAULT_CALIBRATION_GREEN_PIXEL = 1980;
 static const uint16_t DEFAULT_CALIBRATION_RED_PIXEL = 1441;
 static const uint16_t DEFAULT_CALIBRATION_BLUE_WAVELENGTH = 445;

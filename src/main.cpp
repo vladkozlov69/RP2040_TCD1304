@@ -15,9 +15,11 @@
 #include "Calibration.h"
 
 #define PIXEL_COUNT 3691
-#define MIN_EXPOSURE_TIME 10UL
-#define MAX_EXPOSURE_TIME 800000UL
+#define MIN_EXPOSURE_TIME 12L
+#define MAX_EXPOSURE_TIME 800000L
 #define MAX_READ_CYCLE_COUNT 10000
+#define MAX_CCD_ADC_VALUE 3000
+#define IDEAL_CCD_ADC_VALUE 1600
 
 #define CAPTURE_CHANNEL 0
 #define CLOCK_DIV 96
@@ -38,7 +40,6 @@ RP2040_PWM * PWM_ADC_SYNC;
 
 uint32_t buffer[PIXEL_COUNT];
 
-int32_t readCycleCount = -3;
 int32_t exposureTime = MIN_EXPOSURE_TIME, readTime;
 uint32_t adcFreq;
 uint16_t lowestCCDVoltage;
@@ -49,6 +50,7 @@ uint32_t measureAdcSpeed();
 void setupTimer(PinName pin, uint32_t ovfCounter);
 void readCCD(void);
 void processData();
+bool dataReady;
 
 char buf[250];
 
@@ -121,31 +123,69 @@ constexpr int pixel_iter = PIXEL_COUNT / pixel_agg;
 
 void loop() 
 {
-    if (readCycleCount >= 3)
+    // if (readCycleCount >= 1)
     {
         processData();
     }
 
     readCCD();
 
-    if (lowestCCDVoltage < 1100) 
+    dataReady = false;
+    // if (skipAutoExposureCount >= 0)
     {
-        // reset exposure
-        exposureTime = max(exposureTime / 4, MIN_EXPOSURE_TIME);; 
-    } 
-    else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4 * 4 * 4)
-    {
-        // increase exposure   
-        exposureTime = min(exposureTime * 4, MAX_EXPOSURE_TIME);
-        SerialUSB.println("#REM Increase exposure x4");
-    }
-    else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
-    {
-        exposureTime = min(exposureTime * 1600 / (2900 - lowestCCDVoltage), MAX_EXPOSURE_TIME);
-        SerialUSB.println("#REM Increase exposure proportionally");
+        if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2700 || exposureTime == MAX_EXPOSURE_TIME))
+        {
+            dataReady = true;
+        }
+        else if (lowestCCDVoltage < 1100) 
+        {
+            // reset exposure
+            SerialUSB.print("#REM lowestCCDVoltage=");
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Decrease exposure /4 from ");
+            SerialUSB.println(exposureTime);
+            // exposureTime = exposureTime / 4;
+            exposureTime = MIN_EXPOSURE_TIME;
+        } 
+        else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
+        {
+            SerialUSB.print("#REM lowestCCDVoltage="); 
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Decrease exposure proportionally from ");
+            SerialUSB.print(exposureTime);
+            float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
+            SerialUSB.print(" Using K = ");
+            SerialUSB.println(K);
+            exposureTime = exposureTime * K;
+        } 
+        else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
+        {
+            // increase exposure   
+            SerialUSB.print("#REM lowestCCDVoltage=");
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Increase exposure x4 from ");
+            SerialUSB.println(exposureTime);
+            exposureTime = exposureTime * 4;
+            
+        }
+        else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
+        {
+            SerialUSB.print("#REM lowestCCDVoltage="); 
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Increase exposure proportionally from ");
+            SerialUSB.print(exposureTime);
+            float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
+            SerialUSB.print(" Using K = ");
+            SerialUSB.println(K);
+            exposureTime = exposureTime * K;
+        }
+
+        // if (exposureTime > readTime) exposureTime = exposureTime - readTime;
+        if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
+        if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
     }
 
-    delayMicroseconds(max(exposureTime - readTime, 10L));
+    delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
 }
 
 void processData()
@@ -160,7 +200,7 @@ void processData()
     size_t maxPos = 0, minPos = 0;
     for (int i = 0; i < PIXEL_COUNT; i++)
     {
-        buffer[i] = buffer[i] / readCycleCount;
+        // buffer[i] = buffer[i] / readCycleCount;
         if (buffer[i] > maxVoltage) 
         {
             maxVoltage = buffer[i];
@@ -234,12 +274,13 @@ void processData()
     //     SerialUSB.println(sp1.find(spElement.first)->second, 4);
     // }
 
-    snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu, readCycleCount=%ld\r\n", 
-        pixel_iter, readTime, micros() - writeStart, waitLoops, readCycleCount);
+    snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu\r\n", 
+        pixel_iter, readTime, micros() - writeStart, waitLoops);
     SerialUSB.print(buf);
     
-    readCycleCount = (exposureTime > MAX_EXPOSURE_TIME / 4) ? 0 : -3;  // skip first
     memset(buffer, 0, sizeof(buffer));
+
+    if (!dataReady) return;
 
     // TODO here we have 'sp' populated with values so we can calculate CCT, CRI, Ri etc.
     Spectrum toProcess = st.transpose(sp);
@@ -251,7 +292,6 @@ void processData()
         // SerialUSB.print(",");
         SerialUSB.println(spElement.second, 4);
     }
-
 
     XY XYcoord = st.calcXY(toProcess);
     float CCT = st.calcCCT(XYcoord);
@@ -303,17 +343,10 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
         }
         
         readVal = adc_read();
-        if (readCycleCount > 0 && readCycleCount <= MAX_READ_CYCLE_COUNT)
-        {
-            buffer[x] = buffer[x] + readVal;
-        }
+        buffer[x] = buffer[x] + readVal;
         if (readVal < lowestCCDVoltage) lowestCCDVoltage = readVal;
     }  
 
-    if (readCycleCount <= MAX_READ_CYCLE_COUNT)
-    {
-        readCycleCount++;
-    }
     return micros() - started;  
 }
 
@@ -324,6 +357,17 @@ uint32_t measureAdcSpeed()
 
 void readCCD(void)
 {
+    if (exposureTime < readTime)
+    {
+        for (int i = 0; i < 200000 / exposureTime; i++)
+        {
+            BITSET_SH;  
+            delayMicroseconds(5);
+            BITCLR_SH;
+            delayMicroseconds(exposureTime - 5);
+        }
+    }
+
     BITCLR_ICG;
     delayMicroseconds(1);
     BITSET_SH;  

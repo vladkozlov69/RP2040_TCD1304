@@ -123,67 +123,62 @@ constexpr int pixel_iter = PIXEL_COUNT / pixel_agg;
 
 void loop() 
 {
-    // if (readCycleCount >= 1)
-    {
-        processData();
-    }
+    processData();
 
     readCCD();
 
     dataReady = false;
-    // if (skipAutoExposureCount >= 0)
-    {
-        if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2700 || exposureTime == MAX_EXPOSURE_TIME))
-        {
-            dataReady = true;
-        }
-        else if (lowestCCDVoltage < 1100) 
-        {
-            // reset exposure
-            SerialUSB.print("#REM lowestCCDVoltage=");
-            SerialUSB.print(lowestCCDVoltage);
-            SerialUSB.print(" Decrease exposure /4 from ");
-            SerialUSB.println(exposureTime);
-            // exposureTime = exposureTime / 4;
-            exposureTime = MIN_EXPOSURE_TIME;
-        } 
-        else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
-        {
-            SerialUSB.print("#REM lowestCCDVoltage="); 
-            SerialUSB.print(lowestCCDVoltage);
-            SerialUSB.print(" Decrease exposure proportionally from ");
-            SerialUSB.print(exposureTime);
-            float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
-            SerialUSB.print(" Using K = ");
-            SerialUSB.println(K);
-            exposureTime = exposureTime * K;
-        } 
-        else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
-        {
-            // increase exposure   
-            SerialUSB.print("#REM lowestCCDVoltage=");
-            SerialUSB.print(lowestCCDVoltage);
-            SerialUSB.print(" Increase exposure x4 from ");
-            SerialUSB.println(exposureTime);
-            exposureTime = exposureTime * 4;
-            
-        }
-        else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
-        {
-            SerialUSB.print("#REM lowestCCDVoltage="); 
-            SerialUSB.print(lowestCCDVoltage);
-            SerialUSB.print(" Increase exposure proportionally from ");
-            SerialUSB.print(exposureTime);
-            float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
-            SerialUSB.print(" Using K = ");
-            SerialUSB.println(K);
-            exposureTime = exposureTime * K;
-        }
 
-        // if (exposureTime > readTime) exposureTime = exposureTime - readTime;
-        if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
-        if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
+    if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2700 || exposureTime == MAX_EXPOSURE_TIME))
+    {
+        dataReady = true;
     }
+    else if (lowestCCDVoltage < 1100) 
+    {
+        // reset exposure
+        SerialUSB.print("#REM lowestCCDVoltage=");
+        SerialUSB.print(lowestCCDVoltage);
+        SerialUSB.print(" Decrease exposure /4 from ");
+        SerialUSB.println(exposureTime);
+        exposureTime = MIN_EXPOSURE_TIME;
+    } 
+    else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
+    {
+        // reduce exposure
+        SerialUSB.print("#REM lowestCCDVoltage="); 
+        SerialUSB.print(lowestCCDVoltage);
+        SerialUSB.print(" Decrease exposure proportionally from ");
+        SerialUSB.print(exposureTime);
+        float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
+        SerialUSB.print(" Using K = ");
+        SerialUSB.println(K);
+        exposureTime = exposureTime * K;
+    } 
+    else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
+    {
+        // increase exposure   
+        SerialUSB.print("#REM lowestCCDVoltage=");
+        SerialUSB.print(lowestCCDVoltage);
+        SerialUSB.print(" Increase exposure x4 from ");
+        SerialUSB.println(exposureTime);
+        exposureTime = exposureTime * 4;
+        
+    }
+    else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
+    {
+        SerialUSB.print("#REM lowestCCDVoltage="); 
+        SerialUSB.print(lowestCCDVoltage);
+        SerialUSB.print(" Increase exposure proportionally from ");
+        SerialUSB.print(exposureTime);
+        float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
+        SerialUSB.print(" Using K = ");
+        SerialUSB.println(K);
+        exposureTime = exposureTime * K;
+    }
+
+    // if (exposureTime > readTime) exposureTime = exposureTime - readTime;
+    if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
+    if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
 
     delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
 }
@@ -200,7 +195,6 @@ void processData()
     size_t maxPos = 0, minPos = 0;
     for (int i = 0; i < PIXEL_COUNT; i++)
     {
-        // buffer[i] = buffer[i] / readCycleCount;
         if (buffer[i] > maxVoltage) 
         {
             maxVoltage = buffer[i];
@@ -244,9 +238,6 @@ void processData()
                 if (prevWavelength >= 380 && prevWavelength <= 780)
                 {
                     float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength);
-                    // SerialUSB.print(prevWavelength);
-                    // SerialUSB.print(" => ");
-                    // SerialUSB.println(coef, 4);
                     sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
                 }
             }
@@ -259,20 +250,8 @@ void processData()
     if (prevWavelength >= 380 && prevWavelength <= 780)
     {
         float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength);
-        // SerialUSB.print(prevWavelength);
-        // SerialUSB.print(" => ");
-        // SerialUSB.println(coef, 4);
         sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
     }
-
-    // for (auto const& spElement : sp)
-    // {
-    //     SerialUSB.print(spElement.first);
-    //     SerialUSB.print(",");
-    //     SerialUSB.print(spElement.second, 4);
-    //     SerialUSB.print(",");
-    //     SerialUSB.println(sp1.find(spElement.first)->second, 4);
-    // }
 
     snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu\r\n", 
         pixel_iter, readTime, micros() - writeStart, waitLoops);
@@ -288,8 +267,6 @@ void processData()
 
     for (auto const& spElement : toProcess)
     {
-        // SerialUSB.print(spElement.first);
-        // SerialUSB.print(",");
         SerialUSB.println(spElement.second, 4);
     }
 

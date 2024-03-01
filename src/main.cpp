@@ -15,8 +15,8 @@
 #include "Calibration.h"
 
 #define PIXEL_COUNT 3691
-#define MIN_EXPOSURE_TIME 12L
-#define MAX_EXPOSURE_TIME 800000L
+#define MIN_EXPOSURE_TIME 120L
+#define MAX_EXPOSURE_TIME 1200//(1000000L/44)
 #define MAX_READ_CYCLE_COUNT 10000
 #define MAX_CCD_ADC_VALUE 3000
 #define IDEAL_CCD_ADC_VALUE 1600
@@ -112,7 +112,7 @@ void setup()
 
     PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 4, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
-    PWM_SH = new RP2040_PWM(SH_PIN, 1000000.0/50, 50);
+    PWM_SH = new RP2040_PWM(SH_PIN, 1000000.0/MIN_EXPOSURE_TIME, 50);
     PWM_CLK->setPWM();
     PWM_ADC_SYNC->setPWM();
     PWM_SH->setPWM();
@@ -137,7 +137,8 @@ void loop()
     {
         dataReady = true;
     }
-    else if (lowestCCDVoltage < 1100) 
+    else 
+    if (lowestCCDVoltage < 1100) 
     {
         // reset exposure
         SerialUSB.print("#REM lowestCCDVoltage=");
@@ -184,6 +185,10 @@ void loop()
     if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
     if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
 
+    PWM_SH->setPWM(SH_PIN, 1000000.0/exposureTime, 50.0);
+    
+    SerialUSB.print("SH Freq ");
+    SerialUSB.println(PWM_SH->getActualFreq());
     // delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
 }
 

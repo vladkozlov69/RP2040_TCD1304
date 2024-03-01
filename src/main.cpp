@@ -27,16 +27,18 @@
 
 #define ADC_FLAG_PIN    LED_PIN
 
-#define BITSET_SH           gpio_put(SH_PIN, 1)
-#define BITCLR_SH           gpio_put(SH_PIN, 0)
+// #define BITSET_SH           gpio_put(SH_PIN, 1)
+// #define BITCLR_SH           gpio_put(SH_PIN, 0)
 #define BITSET_ICG          gpio_put(ICG_PIN, 1)
 #define BITCLR_ICG          gpio_put(ICG_PIN, 0)
 #define BITSET_ADC_READ     gpio_put(ADC_FLAG_PIN, 1)
 #define BITCLR_ADC_READ     gpio_put(ADC_FLAG_PIN, 0)
 #define BITREAD_ADC_SYNC    gpio_get(ADC_SYNC_PIN)
+#define BITREAD_SH_SYNC     gpio_get(SH_PIN)
 
 RP2040_PWM * PWM_CLK;
 RP2040_PWM * PWM_ADC_SYNC;
+RP2040_PWM * PWM_SH;
 
 uint32_t buffer[PIXEL_COUNT];
 
@@ -92,7 +94,7 @@ void setup()
 {
     SerialUSB.begin(230400);
 
-    pinMode(SH_PIN, OUTPUT);
+    // pinMode(SH_PIN, OUTPUT);
     pinMode(ICG_PIN, OUTPUT);
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, HIGH);
@@ -110,8 +112,10 @@ void setup()
 
     PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 4, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
+    PWM_SH = new RP2040_PWM(SH_PIN, 1000000.0/50, 50);
     PWM_CLK->setPWM();
     PWM_ADC_SYNC->setPWM();
+    PWM_SH->setPWM();
 }
 
 unsigned long copyTimer = 0;
@@ -180,7 +184,7 @@ void loop()
     if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
     if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
 
-    delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
+    // delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
 }
 
 void processData()
@@ -334,22 +338,26 @@ uint32_t measureAdcSpeed()
 
 void readCCD(void)
 {
-    if (exposureTime < readTime)
+    // if (exposureTime < readTime)
+    // {
+    //     for (int i = 0; i < 200000 / exposureTime; i++)
+    //     {
+    //         BITSET_SH;  
+    //         delayMicroseconds(5);
+    //         BITCLR_SH;
+    //         delayMicroseconds(exposureTime - 5);
+    //     }
+    // }
+    while (BITREAD_SH_SYNC == 0)
     {
-        for (int i = 0; i < 200000 / exposureTime; i++)
-        {
-            BITSET_SH;  
-            delayMicroseconds(5);
-            BITCLR_SH;
-            delayMicroseconds(exposureTime - 5);
-        }
-    }
-
+        waitLoops++;
+    }  
+    delayMicroseconds(2);
     BITCLR_ICG;
-    delayMicroseconds(1);
-    BITSET_SH;  
-    delayMicroseconds(5);
-    BITCLR_SH;
+    // delayMicroseconds(1);
+    // BITSET_SH;  
+    // delayMicroseconds(5);
+    // BITCLR_SH;
     delayMicroseconds(15);
     BITSET_ICG;
     delayMicroseconds(1);

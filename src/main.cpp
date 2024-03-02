@@ -15,8 +15,8 @@
 #include "Calibration.h"
 
 #define PIXEL_COUNT 3691
-#define MIN_EXPOSURE_TIME 120L
-#define MAX_EXPOSURE_TIME 1200//(1000000L/44)
+#define MIN_EXPOSURE_TIME 12L
+#define MAX_EXPOSURE_TIME 2400L//(1000000L/44)
 #define MAX_READ_CYCLE_COUNT 10000
 #define MAX_CCD_ADC_VALUE 3000
 #define IDEAL_CCD_ADC_VALUE 1600
@@ -27,8 +27,8 @@
 
 #define ADC_FLAG_PIN    LED_PIN
 
-// #define BITSET_SH           gpio_put(SH_PIN, 1)
-// #define BITCLR_SH           gpio_put(SH_PIN, 0)
+#define BITSET_SH           gpio_put(SH_PIN, 1)
+#define BITCLR_SH           gpio_put(SH_PIN, 0)
 #define BITSET_ICG          gpio_put(ICG_PIN, 1)
 #define BITCLR_ICG          gpio_put(ICG_PIN, 0)
 #define BITSET_ADC_READ     gpio_put(ADC_FLAG_PIN, 1)
@@ -38,7 +38,10 @@
 
 RP2040_PWM * PWM_CLK;
 RP2040_PWM * PWM_ADC_SYNC;
+
+#ifdef USE_SH_PWM
 RP2040_PWM * PWM_SH;
+#endif
 
 uint32_t buffer[PIXEL_COUNT];
 
@@ -112,10 +115,13 @@ void setup()
 
     PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 4, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
-    PWM_SH = new RP2040_PWM(SH_PIN, 1000000.0/MIN_EXPOSURE_TIME, 50);
     PWM_CLK->setPWM();
     PWM_ADC_SYNC->setPWM();
+
+#ifdef USE_SH_PWM
+    PWM_SH = new RP2040_PWM(SH_PIN, 1000000.0/MIN_EXPOSURE_TIME, 50);
     PWM_SH->setPWM();
+#endif
 }
 
 unsigned long copyTimer = 0;
@@ -185,11 +191,14 @@ void loop()
     if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
     if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
 
-    PWM_SH->setPWM(SH_PIN, 1000000.0/exposureTime, 50.0);
-    
+
+#ifdef USE_SH_PWM
+    PWM_SH->setPWM(SH_PIN, 1000000.0/exposureTime, 50);
     SerialUSB.print("SH Freq ");
     SerialUSB.println(PWM_SH->getActualFreq());
-    // delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
+#else
+    delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
+#endif
 }
 
 void processData()
@@ -343,29 +352,37 @@ uint32_t measureAdcSpeed()
 
 void readCCD(void)
 {
-    // if (exposureTime < readTime)
-    // {
-    //     for (int i = 0; i < 200000 / exposureTime; i++)
-    //     {
-    //         BITSET_SH;  
-    //         delayMicroseconds(5);
-    //         BITCLR_SH;
-    //         delayMicroseconds(exposureTime - 5);
-    //     }
-    // }
-    while (BITREAD_SH_SYNC == 0)
-    {
-        waitLoops++;
-    }  
+#ifdef USE_SH_PWM
+    while (BITREAD_SH_SYNC == 1) waitLoops++; 
+    while (BITREAD_SH_SYNC == 0) waitLoops++;
     delayMicroseconds(2);
     BITCLR_ICG;
-    // delayMicroseconds(1);
-    // BITSET_SH;  
-    // delayMicroseconds(5);
-    // BITCLR_SH;
+    delayMicroseconds(15);
+    while (BITREAD_SH_SYNC == 1) waitLoops++; 
+    while (BITREAD_SH_SYNC == 0) waitLoops++;
+    BITSET_ICG;
+    delayMicroseconds(1);
+#else
+    if (exposureTime < readTime)
+    {
+        for (int i = 0; i < 200000 / exposureTime; i++)
+        {
+            BITSET_SH;  
+            delayMicroseconds(5);
+            BITCLR_SH;
+            delayMicroseconds(exposureTime - 5);
+        }
+    }
+    delayMicroseconds(2);
+    BITCLR_ICG;
+    delayMicroseconds(1);
+    BITSET_SH;  
+    delayMicroseconds(5);
+    BITCLR_SH;
     delayMicroseconds(15);
     BITSET_ICG;
     delayMicroseconds(1);
+#endif
 
     BITSET_ADC_READ;
     readTime = readCCDInternal(PIXEL_COUNT, true);

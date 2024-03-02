@@ -16,8 +16,7 @@
 
 #define PIXEL_COUNT 3691
 #define MIN_EXPOSURE_TIME 12L
-#define MAX_EXPOSURE_TIME 2400L//(1000000L/44)
-#define MAX_READ_CYCLE_COUNT 10000
+#define MAX_EXPOSURE_TIME 800000L//(1000000L/44)
 #define MAX_CCD_ADC_VALUE 3000
 #define IDEAL_CCD_ADC_VALUE 1600
 
@@ -123,13 +122,6 @@ void setup()
     PWM_SH->setPWM();
 #endif
 }
-
-unsigned long copyTimer = 0;
-
-constexpr int pixel_agg_power = 0;
-
-constexpr int pixel_agg = 1 << pixel_agg_power;
-constexpr int pixel_iter = PIXEL_COUNT / pixel_agg;
 
 void loop() 
 {
@@ -240,10 +232,11 @@ void processData()
     int countWavelength = 0;
     float sumPerWavelength = 0;
     
+    // TODO find i_start and i_end for 380-780 nm and optimize iteration
     for (int i = 0; i < PIXEL_COUNT; ++i)
     {
         // aggregate rounded wavelenghts as we have ~3..4 values per nm
-        int waveLenght = (int) getWavelength(SensorCalibration, i);
+        int waveLenght = (int) getWavelength(SensorCalibration, i) / 2;
         if (prevWavelength == waveLenght)
         {
             countWavelength++;
@@ -253,10 +246,10 @@ void processData()
         {
             if (prevWavelength > 0 && countWavelength > 0)
             {
-                if (prevWavelength >= 380 && prevWavelength <= 780)
+                if (prevWavelength >= (380/2) && prevWavelength <= (780/2))
                 {
-                    float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength);
-                    sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
+                    float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength*2);
+                    sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
                 }
             }
             prevWavelength = waveLenght;
@@ -265,30 +258,41 @@ void processData()
         }
     }
 
-    if (prevWavelength >= 380 && prevWavelength <= 780)
+    if (prevWavelength >= 380/2 && prevWavelength <= 780/2)
     {
-        float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength);
-        sp.insert({prevWavelength, coef * sumPerWavelength/countWavelength});
+        float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength*2);
+        sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
     }
 
-    snprintf(buf, sizeof(buf), "#END pixels=%d, readTime=%ld, writeTime=%lu, waitLoops=%lu\r\n", 
-        pixel_iter, readTime, micros() - writeStart, waitLoops);
+    snprintf(buf, sizeof(buf), "#END readTime=%ld, writeTime=%lu, waitLoops=%lu\r\n", 
+        readTime, micros() - writeStart, waitLoops);
     SerialUSB.print(buf);
     
     memset(buffer, 0, sizeof(buffer));
 
     if (!dataReady) return;
 
-    // TODO here we have 'sp' populated with values so we can calculate CCT, CRI, Ri etc.
-    Spectrum toProcess = st.transpose(sp);
-    st.normalize(toProcess);
+    SerialUSB.print("#REM Orig SP:");
+    SerialUSB.println(sp.size());
 
-    for (auto const& spElement : toProcess)
+    for (auto const& spElement : sp)
+    {
+        SerialUSB.print("#REM ");
+        SerialUSB.print(spElement.first);
+        SerialUSB.print(" => ");
+        SerialUSB.println(spElement.second);
+    }
+
+    // // TODO here we have 'sp' populated with values so we can calculate CCT, CRI, Ri etc.
+    // Spectrum toProcess = st.transpose(sp);
+    st.normalize(sp);
+
+    for (auto const& spElement : sp)
     {
         SerialUSB.println(spElement.second, 4);
     }
 
-    XY XYcoord = st.calcXY(toProcess);
+    XY XYcoord = st.calcXY(sp);
     float CCT = st.calcCCT(XYcoord);
 
     SerialUSB.print("#REM CCT=");
@@ -300,7 +304,7 @@ void processData()
     SerialUSB.println(DUV, 6);
 
     memset(ri, 0, sizeof(ri));
-    st.calcCRI(toProcess, ri);
+    st.calcCRI(sp, ri);
 
     float Ra=0, Re=0;
     for (int q = 0; q < 15; q++) 
@@ -317,8 +321,6 @@ void processData()
     snprintf(buf, sizeof(buf), "#REM CCT=%d Ra=%d Re=%d MIN=%lu@%d MAX=%lu@%d", 
         (int)CCT, (int)Ra, (int)Re, minVal, minPos, maxVal, maxPos);
     SerialUSB.println(buf);
-
-    copyTimer = millis();
 }
 
 uint32_t readCCDInternal(int pixelsToRead, bool sync=false)

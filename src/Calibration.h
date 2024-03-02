@@ -25,6 +25,7 @@ struct TCD1304_SpectralResponse {
     float coef;
 };
 
+// TODO cache a, b in class
 float getWavelengthByPoints(uint16_t pixel1, uint16_t wl1, uint16_t pixel2, uint16_t wl2, u_int16_t pixel)
 {
     float a = 1.0 * (wl2 - wl1) / (pixel2 - pixel1);
@@ -47,6 +48,7 @@ float getWavelength(SENSOR_CALIBRATION &calibration, uint16_t pixel)
     }
 }
 
+// TODO cache a, b in record
 float getTCD1304Coef(TCD1304_SpectralResponse * sr, int srCount, int waveLength)
 {
     for (int i = 0; i < srCount - 1; i++)

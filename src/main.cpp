@@ -62,21 +62,6 @@ Spectrum sp;
 SpectralTool st;
 RI ri;
 
-
-
-TCD1304_SpectralResponse tcd1304SR[] = {
-    {.wl = 380, .coef = 0.70},
-    {.wl = 400, .coef = 0.80},
-    {.wl = 450, .coef = 0.93},
-    {.wl = 500, .coef = 0.98},
-    {.wl = 550, .coef = 0.99},
-    {.wl = 600, .coef = 0.97},
-    {.wl = 650, .coef = 0.92},
-    {.wl = 700, .coef = 0.8},
-    {.wl = 750, .coef = 0.63},
-    {.wl = 800, .coef = 0.45}
-};
-
 void setup() 
 {
     SerialUSB.begin(230400);
@@ -110,7 +95,19 @@ void setup()
 
 void loop() 
 {
-    processData();
+    // processData();
+    SerialUSB.println("#START");
+    for (int i = 0; i < PIXEL_COUNT / 8; i++)
+    {
+        unsigned long val = 0;
+        for (int j = 0; j < 8; j++)
+        {
+            val = val + buffer[i * 8 + j];
+        }
+        SerialUSB.println(val / 8.0, 4);
+    }
+    SerialUSB.println("#END");
+
 
     readCCD();
 
@@ -233,7 +230,7 @@ void processData()
             {
                 if (prevWavelength >= (380/2) && prevWavelength <= (780/2))
                 {
-                    float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength*2);
+                    float coef = getTCD1304Coef(prevWavelength*2);
                     sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
                 }
             }
@@ -245,7 +242,7 @@ void processData()
 
     if (prevWavelength >= 380/2 && prevWavelength <= 780/2)
     {
-        float coef = getTCD1304Coef(tcd1304SR, sizeof(tcd1304SR)/sizeof(tcd1304SR[0]), prevWavelength*2);
+        float coef = getTCD1304Coef(prevWavelength*2);
         sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
     }
 
@@ -260,13 +257,13 @@ void processData()
     SerialUSB.print("#REM Orig SP:");
     SerialUSB.println(sp.size());
 
-    for (auto const& spElement : sp)
-    {
-        SerialUSB.print("#REM ");
-        SerialUSB.print(spElement.first);
-        SerialUSB.print(" => ");
-        SerialUSB.println(spElement.second);
-    }
+    // for (auto const& spElement : sp)
+    // {
+    //     SerialUSB.print("#REM ");
+    //     SerialUSB.print(spElement.first);
+    //     SerialUSB.print(" => ");
+    //     SerialUSB.println(spElement.second);
+    // }
 
     // // TODO here we have 'sp' populated with values so we can calculate CCT, CRI, Ri etc.
     // Spectrum toProcess = st.transpose(sp);
@@ -325,7 +322,7 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
         }
         
         readVal = adc_read();
-        buffer[x] = buffer[x] + readVal;
+        buffer[x] = readVal;
         if (readVal < lowestCCDVoltage) lowestCCDVoltage = readVal;
     }  
 

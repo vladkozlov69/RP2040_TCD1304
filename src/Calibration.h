@@ -2,6 +2,26 @@
 
 #include <Arduino.h>
 
+class Approximator
+{
+    private: 
+        float a, b;
+    public:
+        Approximator(float x1, float y1, float x2, float y2)
+        {
+            a = (y2 - y1) / (x2 - x1);
+            b = y1 - a * x1;
+        }
+        float get(float x)
+        {
+            return a * x + b;
+        }
+        float getArgument(float y)
+        {
+            return (y - b) / a;
+        }
+};
+
 static const uint16_t DEFAULT_CALIBRATION_BLUE_PIXEL = 2410;
 static const uint16_t DEFAULT_CALIBRATION_GREEN_PIXEL = 1980;
 static const uint16_t DEFAULT_CALIBRATION_RED_PIXEL = 1441;
@@ -9,66 +29,74 @@ static const uint16_t DEFAULT_CALIBRATION_BLUE_WAVELENGTH = 445;
 static const uint16_t DEFAULT_CALIBRATION_GREEN_WAVELENGTH = 532;
 static const uint16_t DEFAULT_CALIBRATION_RED_WAVELENGTH = 650;
 
-struct SENSOR_CALIBRATION_POINT {
-    uint16_t wavelength;
-    uint16_t pixelNum;
-};
-
-struct SENSOR_CALIBRATION {
-    SENSOR_CALIBRATION_POINT R;
-    SENSOR_CALIBRATION_POINT G;
-    SENSOR_CALIBRATION_POINT B;
-};
-
 struct TCD1304_SpectralResponse {
     int wl;
     float coef;
+    Approximator * approx;
 };
 
-// TODO cache a, b in class
-float getWavelengthByPoints(uint16_t pixel1, uint16_t wl1, uint16_t pixel2, uint16_t wl2, u_int16_t pixel)
-{
-    float a = 1.0 * (wl2 - wl1) / (pixel2 - pixel1);
-    float b = wl1 - a * pixel1;
+static TCD1304_SpectralResponse tcd1304SR[] = {
+    {.wl = 380, .coef = 0.70, .approx = new Approximator(380, 0.70, 400, 0.80)},
+    {.wl = 400, .coef = 0.80, .approx = new Approximator(400, 0.80, 450, 0.93)},
+    {.wl = 450, .coef = 0.93, .approx = new Approximator(450, 0.93, 500, 0.98)},
+    {.wl = 500, .coef = 0.98, .approx = new Approximator(500, 0.98, 550, 0.99)},
+    {.wl = 550, .coef = 0.99, .approx = new Approximator(550, 0.99, 600, 0.97)},
+    {.wl = 600, .coef = 0.97, .approx = new Approximator(600, 0.97, 650, 0.92)},
+    {.wl = 650, .coef = 0.92, .approx = new Approximator(650, 0.92, 700, 0.80)},
+    {.wl = 700, .coef = 0.80, .approx = new Approximator(700, 0.80, 750, 0.63)},
+    {.wl = 750, .coef = 0.63, .approx = new Approximator(750, 0.63, 800, 0.45)},
+    {.wl = 800, .coef = 0.45}
+};
+static Approximator redApproximator(
+    DEFAULT_CALIBRATION_RED_PIXEL, DEFAULT_CALIBRATION_RED_WAVELENGTH, 
+    DEFAULT_CALIBRATION_GREEN_PIXEL, DEFAULT_CALIBRATION_GREEN_WAVELENGTH);
 
-    return a * pixel + b;
-}
+static Approximator blueApproximator(
+    DEFAULT_CALIBRATION_GREEN_PIXEL, DEFAULT_CALIBRATION_GREEN_WAVELENGTH, 
+    DEFAULT_CALIBRATION_BLUE_PIXEL, DEFAULT_CALIBRATION_BLUE_WAVELENGTH);
 
-float getWavelength(SENSOR_CALIBRATION &calibration, uint16_t pixel)
+
+float getWavelength(uint16_t pixel)
 {
-    if (pixel >= calibration.G.pixelNum)
+    if (pixel >= DEFAULT_CALIBRATION_GREEN_PIXEL)
     {
-        return getWavelengthByPoints(calibration.B.pixelNum, calibration.B.wavelength, 
-                             calibration.G.pixelNum, calibration.G.wavelength, pixel);
+        return blueApproximator.get(pixel);
     }
     else
     {
-        return getWavelengthByPoints(calibration.G.pixelNum, calibration.G.wavelength, 
-                             calibration.R.pixelNum, calibration.R.wavelength, pixel);
+        return redApproximator.get(pixel);
+    }
+}
+
+int getPixelForWavelength(float wavelength)
+{
+    if (wavelength <= DEFAULT_CALIBRATION_GREEN_WAVELENGTH)
+    {
+        return blueApproximator.getArgument(wavelength);
+    }
+    else
+    {
+        return redApproximator.getArgument(wavelength);
     }
 }
 
 // TODO cache a, b in record
-float getTCD1304Coef(TCD1304_SpectralResponse * sr, int srCount, int waveLength)
+float getTCD1304Coef(int waveLength)
 {
-    for (int i = 0; i < srCount - 1; i++)
+    for (int i = 0; i < 9; i++)
     {
-        if (sr[i].wl <= waveLength && sr[i+1].wl > waveLength)
+        if (tcd1304SR[i].wl <= waveLength && tcd1304SR[i+1].wl > waveLength)
         {
             // SerialUSB.print(sr[i].wl);
             // SerialUSB.print(" <= ");
             // SerialUSB.print(waveLength);
             // SerialUSB.print(" < ");
             // SerialUSB.print(sr[i+1].wl);
-            float a = 1.0 * (sr[i+1].coef - sr[i].coef) / (sr[i+1].wl - sr[i].wl);
-            float b = sr[i].coef - a * sr[i].wl;
-            float y = a * waveLength + b;
             // SerialUSB.print("   ");
             // SerialUSB.println(y);
-            return 1.0/y;
+            return 1.0/tcd1304SR[i].approx->get(waveLength);
         }
     }
     
     return 0;
 }
-

@@ -95,18 +95,18 @@ void setup()
 
 void loop() 
 {
-    // processData();
-    SerialUSB.println("#START");
-    for (int i = 0; i < PIXEL_COUNT / 8; i++)
-    {
-        unsigned long val = 0;
-        for (int j = 0; j < 8; j++)
-        {
-            val = val + buffer[i * 8 + j];
-        }
-        SerialUSB.println(val / 8.0, 4);
-    }
-    SerialUSB.println("#END");
+    processData();
+    // SerialUSB.println("#START");
+    // for (int i = 0; i < PIXEL_COUNT / 8; i++)
+    // {
+    //     unsigned long val = 0;
+    //     for (int j = 0; j < 8; j++)
+    //     {
+    //         val = val + buffer[i * 8 + j];
+    //     }
+    //     SerialUSB.println(val / 8.0, 4);
+    // }
+    // SerialUSB.println("#END");
 
 
     readCCD();

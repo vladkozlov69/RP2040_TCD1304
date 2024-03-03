@@ -77,21 +77,6 @@ TCD1304_SpectralResponse tcd1304SR[] = {
     {.wl = 800, .coef = 0.45}
 };
 
-SENSOR_CALIBRATION SensorCalibration = {
-    .R = {
-        .wavelength = DEFAULT_CALIBRATION_RED_WAVELENGTH,
-        .pixelNum = DEFAULT_CALIBRATION_RED_PIXEL
-    },
-    .G = {
-        .wavelength = DEFAULT_CALIBRATION_GREEN_WAVELENGTH,
-        .pixelNum = DEFAULT_CALIBRATION_GREEN_PIXEL
-    }, 
-    .B = {
-        .wavelength = DEFAULT_CALIBRATION_BLUE_WAVELENGTH,
-        .pixelNum = DEFAULT_CALIBRATION_BLUE_PIXEL
-    }
-};
-
 void setup() 
 {
     SerialUSB.begin(230400);
@@ -236,7 +221,7 @@ void processData()
     for (int i = 0; i < PIXEL_COUNT; ++i)
     {
         // aggregate rounded wavelenghts as we have ~3..4 values per nm
-        int waveLenght = (int) getWavelength(SensorCalibration, i) / 2;
+        int waveLenght = (int) getWavelength(i) / 2;
         if (prevWavelength == waveLenght)
         {
             countWavelength++;

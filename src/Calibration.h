@@ -16,6 +16,10 @@ class Approximator
         {
             return a * x + b;
         }
+        float getArgument(float y)
+        {
+            return (y - b) / a;
+        }
 };
 
 static const uint16_t DEFAULT_CALIBRATION_BLUE_PIXEL = 2410;
@@ -61,6 +65,18 @@ float getWavelength(uint16_t pixel)
     else
     {
         return redApproximator.get(pixel);
+    }
+}
+
+int getPixelForWavelength(float wavelength)
+{
+    if (wavelength <= DEFAULT_CALIBRATION_GREEN_WAVELENGTH)
+    {
+        return blueApproximator.getArgument(wavelength);
+    }
+    else
+    {
+        return redApproximator.getArgument(wavelength);
     }
 }
 

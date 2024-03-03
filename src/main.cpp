@@ -15,8 +15,8 @@
 #include "Calibration.h"
 
 #define PIXEL_COUNT 3691
-#define MIN_EXPOSURE_TIME 12L
-#define MAX_EXPOSURE_TIME 800000L//(1000000L/44)
+#define MIN_EXPOSURE_TIME 11L
+#define MAX_EXPOSURE_TIME 133333L
 #define MAX_CCD_ADC_VALUE 3000
 #define IDEAL_CCD_ADC_VALUE 1600
 
@@ -167,8 +167,9 @@ void loop()
 
 
 #ifdef USE_SH_PWM
+    // PWM_SH->setPWM(SH_PIN, 10.0, 50);
     PWM_SH->setPWM(SH_PIN, 1000000.0/exposureTime, 50);
-    SerialUSB.print("SH Freq ");
+    SerialUSB.print("#REM SH Freq ");
     SerialUSB.println(PWM_SH->getActualFreq());
 #else
     delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
@@ -215,7 +216,8 @@ void processData()
     float sumPerWavelength = 0;
     
     // TODO find i_start and i_end for 380-780 nm and optimize iteration
-    for (int i = 0; i < PIXEL_COUNT; ++i)
+    for (int i = getPixelForWavelength(800); i < getPixelForWavelength(360); i++)
+    //for (int i = 0; i < PIXEL_COUNT; ++i)
     {
         // aggregate rounded wavelenghts as we have ~3..4 values per nm
         int waveLenght = (int) getWavelength(i) / 2;

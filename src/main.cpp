@@ -16,7 +16,8 @@
 
 #define PIXEL_COUNT 3691
 #define MIN_EXPOSURE_TIME 11L
-#define MAX_EXPOSURE_TIME 133333L
+#define MAX_EXPOSURE_TIME_PWM 133333L
+#define MAX_EXPOSURE_TIME 800000L
 #define MAX_CCD_ADC_VALUE 3000
 #define IDEAL_CCD_ADC_VALUE 1600
 
@@ -167,10 +168,19 @@ void loop()
 
 
 #ifdef USE_SH_PWM
-    // PWM_SH->setPWM(SH_PIN, 10.0, 50);
-    PWM_SH->setPWM(SH_PIN, 1000000.0/exposureTime, 50);
-    SerialUSB.print("#REM SH Freq ");
-    SerialUSB.println(PWM_SH->getActualFreq());
+    if (exposureTime <= MAX_EXPOSURE_TIME_PWM)
+    {
+        PWM_SH->enablePWM();
+        PWM_SH->setPWM(SH_PIN, 1000000.0/exposureTime, 50);
+        SerialUSB.print("#REM SH Freq ");
+        SerialUSB.println(PWM_SH->getActualFreq());
+    }
+    else
+    {
+        PWM_SH->disablePWM();
+        pinMode(SH_PIN, OUTPUT);
+        delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME));
+    }
 #else
     delayMicroseconds(max(exposureTime - readTime, MIN_EXPOSURE_TIME)); 
 #endif
@@ -339,15 +349,30 @@ uint32_t measureAdcSpeed()
 void readCCD(void)
 {
 #ifdef USE_SH_PWM
-    while (BITREAD_SH_SYNC == 1) waitLoops++; 
-    while (BITREAD_SH_SYNC == 0) waitLoops++;
-    delayMicroseconds(2);
-    BITCLR_ICG;
-    delayMicroseconds(15);
-    while (BITREAD_SH_SYNC == 1) waitLoops++; 
-    while (BITREAD_SH_SYNC == 0) waitLoops++;
-    BITSET_ICG;
-    delayMicroseconds(1);
+    if (exposureTime <= MAX_EXPOSURE_TIME_PWM)
+    {
+        while (BITREAD_SH_SYNC == 1) waitLoops++; 
+        while (BITREAD_SH_SYNC == 0) waitLoops++;
+        delayMicroseconds(2);
+        BITCLR_ICG;
+        delayMicroseconds(15);
+        while (BITREAD_SH_SYNC == 1) waitLoops++; 
+        while (BITREAD_SH_SYNC == 0) waitLoops++;
+        BITSET_ICG;
+        delayMicroseconds(1);
+    }
+    else
+    {
+        delayMicroseconds(2);
+        BITCLR_ICG;
+        delayMicroseconds(1);
+        BITSET_SH;  
+        delayMicroseconds(5);
+        BITCLR_SH;
+        delayMicroseconds(15);
+        BITSET_ICG;
+        delayMicroseconds(1);
+    }
 #else
     if (exposureTime < readTime)
     {

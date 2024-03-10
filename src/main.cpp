@@ -63,9 +63,26 @@ Spectrum sp;
 SpectralTool st;
 RI ri;
 
+#include "Display.h"
+
 void setup() 
 {
     SerialUSB.begin(230400);
+
+    SPI = MbedSPI(PICO_DEFAULT_SPI_RX_PIN, 
+                PICO_DEFAULT_SPI_TX_PIN, 
+                PICO_DEFAULT_SPI_SCK_PIN);
+    SPI.begin();
+
+    tft = new Adafruit_ILI9341(&SPI, DC_PIN, CS_PIN, RST_PIN);
+    tft->begin();
+    tft->setRotation(2);
+    while (true)
+    {
+        tft->fillScreen(ILI9341_YELLOW);
+    }
+    
+    tft->fillScreen(ILI9341_YELLOW);
 
     // pinMode(SH_PIN, OUTPUT);
     pinMode(ICG_PIN, OUTPUT);

@@ -9,6 +9,10 @@ class Approximator
     public:
         Approximator(float x1, float y1, float x2, float y2)
         {
+            this->update(x1, y1, x2, y2);
+        }
+        void update(float x1, float y1, float x2, float y2)
+        {
             a = (y2 - y1) / (x2 - x1);
             b = y1 - a * x1;
         }
@@ -22,12 +26,12 @@ class Approximator
         }
 };
 
-static const uint16_t DEFAULT_CALIBRATION_BLUE_PIXEL = 2410;
-static const uint16_t DEFAULT_CALIBRATION_GREEN_PIXEL = 1980;
-static const uint16_t DEFAULT_CALIBRATION_RED_PIXEL = 1441;
-static const uint16_t DEFAULT_CALIBRATION_BLUE_WAVELENGTH = 445;
-static const uint16_t DEFAULT_CALIBRATION_GREEN_WAVELENGTH = 532;
-static const uint16_t DEFAULT_CALIBRATION_RED_WAVELENGTH = 650;
+static uint16_t CALIBRATION_BLUE_PIXEL = 2763;
+static uint16_t CALIBRATION_GREEN_PIXEL = 2122;
+static uint16_t CALIBRATION_RED_PIXEL = 1496;
+static const uint16_t CALIBRATION_BLUE_WAVELENGTH = 405;
+static const uint16_t CALIBRATION_GREEN_WAVELENGTH = 532;
+static const uint16_t CALIBRATION_RED_WAVELENGTH = 650;
 
 struct TCD1304_SpectralResponse {
     int wl;
@@ -47,36 +51,36 @@ static TCD1304_SpectralResponse tcd1304SR[] = {
     {.wl = 750, .coef = 0.63, .approx = new Approximator(750, 0.63, 800, 0.45)},
     {.wl = 800, .coef = 0.45}
 };
-static Approximator redApproximator(
-    DEFAULT_CALIBRATION_RED_PIXEL, DEFAULT_CALIBRATION_RED_WAVELENGTH, 
-    DEFAULT_CALIBRATION_GREEN_PIXEL, DEFAULT_CALIBRATION_GREEN_WAVELENGTH);
+Approximator * redApproximator = NULL;
+    // DEFAULT_CALIBRATION_RED_PIXEL, DEFAULT_CALIBRATION_RED_WAVELENGTH, 
+    // DEFAULT_CALIBRATION_GREEN_PIXEL, DEFAULT_CALIBRATION_GREEN_WAVELENGTH);
 
-static Approximator blueApproximator(
-    DEFAULT_CALIBRATION_GREEN_PIXEL, DEFAULT_CALIBRATION_GREEN_WAVELENGTH, 
-    DEFAULT_CALIBRATION_BLUE_PIXEL, DEFAULT_CALIBRATION_BLUE_WAVELENGTH);
+Approximator * blueApproximator = NULL;
+    // DEFAULT_CALIBRATION_GREEN_PIXEL, DEFAULT_CALIBRATION_GREEN_WAVELENGTH, 
+    // DEFAULT_CALIBRATION_BLUE_PIXEL, DEFAULT_CALIBRATION_BLUE_WAVELENGTH);
 
 
 float getWavelength(uint16_t pixel)
 {
-    if (pixel >= DEFAULT_CALIBRATION_GREEN_PIXEL)
+    if (pixel >= CALIBRATION_GREEN_PIXEL)
     {
-        return blueApproximator.get(pixel);
+        return blueApproximator->get(pixel);
     }
     else
     {
-        return redApproximator.get(pixel);
+        return redApproximator->get(pixel);
     }
 }
 
 int getPixelForWavelength(float wavelength)
 {
-    if (wavelength <= DEFAULT_CALIBRATION_GREEN_WAVELENGTH)
+    if (wavelength <= CALIBRATION_GREEN_WAVELENGTH)
     {
-        return blueApproximator.getArgument(wavelength);
+        return blueApproximator->getArgument(wavelength);
     }
     else
     {
-        return redApproximator.getArgument(wavelength);
+        return redApproximator->getArgument(wavelength);
     }
 }
 

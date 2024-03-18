@@ -13,6 +13,7 @@
 #include "RP2040_PWM.h"
 #include "SpectralTool.h"
 #include "Calibration.h"
+#include "SettingsHelper.h"
 
 #define PIXEL_COUNT 3691
 #define MIN_EXPOSURE_TIME 11L
@@ -55,6 +56,7 @@ uint32_t measureAdcSpeed();
 void setupTimer(PinName pin, uint32_t ovfCounter);
 void readCCD(void);
 void processData();
+void readCalibration();
 bool dataReady;
 
 char buf[250];
@@ -63,11 +65,24 @@ Spectrum sp;
 SpectralTool st;
 RI ri;
 
+LittleFS_MBED *myFS;
+SettingsHelper sh;
+
 #include "Display.h"
 
 void setup() 
 {
     SerialUSB.begin(230400);
+
+    myFS = new LittleFS_MBED();
+
+    if (!myFS->init())
+    {
+        SerialUSB.println("LITTLEFS Mount Failed");
+    }
+
+    readCalibration();
+   
 
     SPI = MbedSPI(PICO_DEFAULT_SPI_RX_PIN, 
                 PICO_DEFAULT_SPI_TX_PIN, 
@@ -76,13 +91,9 @@ void setup()
 
     tft = new Adafruit_ILI9341(&SPI, DC_PIN, CS_PIN, RST_PIN);
     tft->begin();
-    tft->setRotation(2);
-    while (true)
-    {
-        tft->fillScreen(ILI9341_YELLOW);
-    }
-    
-    tft->fillScreen(ILI9341_YELLOW);
+    tft->invertDisplay(true);
+    tft->setRotation(0);
+    tft->fillScreen(ILI9341_BLACK);
 
     // pinMode(SH_PIN, OUTPUT);
     pinMode(ICG_PIN, OUTPUT);
@@ -111,8 +122,18 @@ void setup()
 #endif
 }
 
+unsigned long screenTimer = 0;
+int screenNum = 0;
+
+void updateCalibration();
+
 void loop() 
 {
+    if (SerialUSB.available())
+    {
+        updateCalibration();
+    }
+
     processData();
     // SerialUSB.println("#START");
     // for (int i = 0; i < PIXEL_COUNT / 8; i++)
@@ -131,7 +152,9 @@ void loop()
 
     dataReady = false;
 
-    if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2700 || exposureTime == MAX_EXPOSURE_TIME))
+    // TIN PINS = 2500
+    // GOLD = 2700
+    if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2500 || exposureTime == MAX_EXPOSURE_TIME))
     {
         dataReady = true;
     }
@@ -332,6 +355,21 @@ void processData()
     snprintf(buf, sizeof(buf), "#REM CCT=%d Ra=%d Re=%d MIN=%lu@%d MAX=%lu@%d", 
         (int)CCT, (int)Ra, (int)Re, minVal, minPos, maxVal, maxPos);
     SerialUSB.println(buf);
+
+    displayBasicInfo(Ra, Re, CCT, DUV);
+    if (millis() - screenTimer >= 3000)
+    {
+        screenTimer = millis();
+        if (screenNum == 0)
+        {
+            displayDetails1();
+        }
+        else
+        {
+            displayDetails2();
+        }
+        screenNum = (screenNum + 1) % 2;
+    }
 }
 
 uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
@@ -417,6 +455,73 @@ void readCCD(void)
     BITCLR_ADC_READ;
 }
 
+void updateCalibration()
+{
+    String input = SerialUSB.readString();
+    if (input.startsWith("C532="))
+    {
+        int pos = input.substring(5).toInt();
+        if (pos > 0)
+        {
+            sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
+            sh.putInt("C532", pos);
+            sh.end();
+        }
+    }
+    if (input.startsWith("C405="))
+    {
+        int pos = input.substring(5).toInt();
+        if (pos > 0)
+        {
+            sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
+            sh.putInt("C405", pos);
+            sh.end();
+        }
+    }
+    if (input.startsWith("C650="))
+    {
+        int pos = input.substring(5).toInt();
+        if (pos > 0)
+        {
+            sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
+            sh.putInt("C650", pos);
+            sh.end();
+        }
+    }
+}
+
+void readCalibration()
+{
+    sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
+    CALIBRATION_BLUE_PIXEL = sh.getInt("C405", CALIBRATION_BLUE_PIXEL);
+    CALIBRATION_GREEN_PIXEL = sh.getInt("C532", CALIBRATION_GREEN_PIXEL);
+    CALIBRATION_RED_PIXEL = sh.getInt("C650", CALIBRATION_RED_PIXEL);
+    sh.end();
+    if (redApproximator)
+    {
+        redApproximator->update(
+            CALIBRATION_RED_PIXEL, CALIBRATION_RED_WAVELENGTH, 
+            CALIBRATION_GREEN_PIXEL, CALIBRATION_GREEN_WAVELENGTH);
+    }
+    else
+    {
+        redApproximator = new Approximator(
+            CALIBRATION_RED_PIXEL, CALIBRATION_RED_WAVELENGTH, 
+            CALIBRATION_GREEN_PIXEL, CALIBRATION_GREEN_WAVELENGTH);   
+    } 
+    if (blueApproximator)
+    {
+        blueApproximator->update(
+            CALIBRATION_GREEN_PIXEL, CALIBRATION_GREEN_WAVELENGTH, 
+            CALIBRATION_BLUE_PIXEL, CALIBRATION_BLUE_WAVELENGTH);
+    }
+    else
+    {
+        blueApproximator = new Approximator(
+            CALIBRATION_GREEN_PIXEL, CALIBRATION_GREEN_WAVELENGTH, 
+            CALIBRATION_BLUE_PIXEL, CALIBRATION_BLUE_WAVELENGTH);
+    }
+}
 
 
 

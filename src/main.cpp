@@ -456,6 +456,14 @@ void readCCD(void)
     BITCLR_ADC_READ;
 }
 
+void updateCalibrationPoint(const char * param, int value)
+{
+    sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
+    sh.putInt(param, value);
+    sh.end();
+    readCalibration();
+}
+
 void updateCalibration()
 {
     String input = SerialUSB.readString();
@@ -464,32 +472,17 @@ void updateCalibration()
     if (input.startsWith("C532="))
     {
         int pos = input.substring(5).toInt();
-        if (pos > 0)
-        {
-            sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
-            sh.putInt("C532", pos);
-            sh.end();
-        }
+        if (pos > 0) updateCalibrationPoint("C532", pos);
     }
     if (input.startsWith("C405="))
     {
         int pos = input.substring(5).toInt();
-        if (pos > 0)
-        {
-            sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
-            sh.putInt("C405", pos);
-            sh.end();
-        }
+        if (pos > 0) updateCalibrationPoint("C405", pos);
     }
     if (input.startsWith("C650="))
     {
         int pos = input.substring(5).toInt();
-        if (pos > 0)
-        {
-            sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
-            sh.putInt("C650", pos);
-            sh.end();
-        }
+        if (pos > 0) updateCalibrationPoint("C650", pos);
     }
 }
 

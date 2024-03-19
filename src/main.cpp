@@ -229,8 +229,9 @@ void loop()
 void processData()
 {
     unsigned long writeStart = micros();
-    snprintf(buf, sizeof(buf), "#START adcF=%lu, lowestCCDVoltage=%d, exposureTime=%ld\r\n", 
-        adcFreq, lowestCCDVoltage, exposureTime);
+    snprintf(buf, sizeof(buf), "#START adcF=%lu, lowestCCDVoltage=%d, exposureTime=%ld, C=%d|%d|%d\r\n", 
+        adcFreq, lowestCCDVoltage, exposureTime, 
+        CALIBRATION_BLUE_PIXEL, CALIBRATION_GREEN_PIXEL, CALIBRATION_RED_PIXEL);
     SerialUSB.print(buf);
 
     // normalize values
@@ -458,6 +459,8 @@ void readCCD(void)
 void updateCalibration()
 {
     String input = SerialUSB.readString();
+    SerialUSB.print("#REM updateCalibration ");
+    SerialUSB.println(input);
     if (input.startsWith("C532="))
     {
         int pos = input.substring(5).toInt();

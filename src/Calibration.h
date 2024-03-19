@@ -26,9 +26,9 @@ class Approximator
         }
 };
 
-static uint16_t CALIBRATION_BLUE_PIXEL = 2763;
-static uint16_t CALIBRATION_GREEN_PIXEL = 2122;
-static uint16_t CALIBRATION_RED_PIXEL = 1496;
+static uint16_t CALIBRATION_BLUE_PIXEL = 3013;
+static uint16_t CALIBRATION_GREEN_PIXEL = 2527;
+static uint16_t CALIBRATION_RED_PIXEL = 2060;
 static const uint16_t CALIBRATION_BLUE_WAVELENGTH = 405;
 static const uint16_t CALIBRATION_GREEN_WAVELENGTH = 532;
 static const uint16_t CALIBRATION_RED_WAVELENGTH = 650;

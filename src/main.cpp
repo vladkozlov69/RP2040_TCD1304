@@ -68,6 +68,9 @@ RI ri;
 LittleFS_MBED *myFS;
 SettingsHelper sh;
 
+boolean dumpData = true;
+boolean autoExposure = true;
+
 #include "Display.h"
 
 void setup() 
@@ -125,13 +128,13 @@ void setup()
 unsigned long screenTimer = 0;
 int screenNum = 0;
 
-void updateCalibration();
+void processConsoleInput();
 
 void loop() 
 {
     if (SerialUSB.available())
     {
-        updateCalibration();
+        processConsoleInput();
     }
 
     processData();
@@ -158,54 +161,55 @@ void loop()
     {
         dataReady = true;
     }
-    else 
-    if (lowestCCDVoltage < 1100) 
+    else if (autoExposure) 
     {
-        // reset exposure
-        SerialUSB.print("#REM lowestCCDVoltage=");
-        SerialUSB.print(lowestCCDVoltage);
-        SerialUSB.print(" Decrease exposure /4 from ");
-        SerialUSB.println(exposureTime);
-        exposureTime = MIN_EXPOSURE_TIME;
-    } 
-    else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
-    {
-        // reduce exposure
-        SerialUSB.print("#REM lowestCCDVoltage="); 
-        SerialUSB.print(lowestCCDVoltage);
-        SerialUSB.print(" Decrease exposure proportionally from ");
-        SerialUSB.print(exposureTime);
-        float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
-        SerialUSB.print(" Using K = ");
-        SerialUSB.println(K);
-        exposureTime = exposureTime * K;
-    } 
-    else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
-    {
-        // increase exposure   
-        SerialUSB.print("#REM lowestCCDVoltage=");
-        SerialUSB.print(lowestCCDVoltage);
-        SerialUSB.print(" Increase exposure x4 from ");
-        SerialUSB.println(exposureTime);
-        exposureTime = exposureTime * 4;
-        
-    }
-    else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
-    {
-        SerialUSB.print("#REM lowestCCDVoltage="); 
-        SerialUSB.print(lowestCCDVoltage);
-        SerialUSB.print(" Increase exposure proportionally from ");
-        SerialUSB.print(exposureTime);
-        float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
-        SerialUSB.print(" Using K = ");
-        SerialUSB.println(K);
-        exposureTime = exposureTime * K;
-    }
+        if (lowestCCDVoltage < 1100) 
+        {
+            // reset exposure
+            SerialUSB.print("#REM lowestCCDVoltage=");
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Decrease exposure /4 from ");
+            SerialUSB.println(exposureTime);
+            exposureTime = MIN_EXPOSURE_TIME;
+        } 
+        else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
+        {
+            // reduce exposure
+            SerialUSB.print("#REM lowestCCDVoltage="); 
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Decrease exposure proportionally from ");
+            SerialUSB.print(exposureTime);
+            float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
+            SerialUSB.print(" Using K = ");
+            SerialUSB.println(K);
+            exposureTime = exposureTime * K;
+        } 
+        else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
+        {
+            // increase exposure   
+            SerialUSB.print("#REM lowestCCDVoltage=");
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Increase exposure x4 from ");
+            SerialUSB.println(exposureTime);
+            exposureTime = exposureTime * 4;
+            
+        }
+        else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
+        {
+            SerialUSB.print("#REM lowestCCDVoltage="); 
+            SerialUSB.print(lowestCCDVoltage);
+            SerialUSB.print(" Increase exposure proportionally from ");
+            SerialUSB.print(exposureTime);
+            float K = 1.0 * (MAX_CCD_ADC_VALUE - IDEAL_CCD_ADC_VALUE) / (MAX_CCD_ADC_VALUE - lowestCCDVoltage);
+            SerialUSB.print(" Using K = ");
+            SerialUSB.println(K);
+            exposureTime = exposureTime * K;
+        }
 
-    // if (exposureTime > readTime) exposureTime = exposureTime - readTime;
-    if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
-    if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
-
+        // if (exposureTime > readTime) exposureTime = exposureTime - readTime;
+        if (exposureTime < MIN_EXPOSURE_TIME) exposureTime = MIN_EXPOSURE_TIME;
+        if (exposureTime > MAX_EXPOSURE_TIME) exposureTime = MAX_EXPOSURE_TIME;
+    }
 
 #ifdef USE_SH_PWM
     if (exposureTime <= MAX_EXPOSURE_TIME_PWM)
@@ -322,9 +326,12 @@ void processData()
     // Spectrum toProcess = st.transpose(sp);
     st.normalize(sp);
 
-    for (auto const& spElement : sp)
+    if (dumpData)
     {
-        SerialUSB.println(spElement.second, 4);
+        for (auto const& spElement : sp)
+        {
+            SerialUSB.println(spElement.second, 4);
+        }
     }
 
     XY XYcoord = st.calcXY(sp);
@@ -464,10 +471,10 @@ void updateCalibrationPoint(const char * param, int value)
     readCalibration();
 }
 
-void updateCalibration()
+void processConsoleInput()
 {
     String input = SerialUSB.readString();
-    SerialUSB.print("#REM updateCalibration ");
+    SerialUSB.print("#REM processConsoleInput ");
     SerialUSB.println(input);
     if (input.startsWith("C532="))
     {
@@ -483,6 +490,27 @@ void updateCalibration()
     {
         int pos = input.substring(5).toInt();
         if (pos > 0) updateCalibrationPoint("C650", pos);
+    }
+    if (input.startsWith("EXP="))
+    {
+        int val = input.substring(4).toInt();
+        if (val > 0) 
+        {
+            exposureTime = val;
+            autoExposure = false;
+        }
+        else
+        {
+            autoExposure = true;
+        }
+    }
+    if (input.startsWith("CON"))
+    {
+        dumpData = true;
+    }
+    if (input.startsWith("COFF"))
+    {
+        dumpData = true;
     }
 }
 

@@ -68,7 +68,14 @@ RI ri;
 LittleFS_MBED *myFS;
 SettingsHelper sh;
 
-boolean dumpData = true;
+enum DumpDataMode
+{
+    OFF,
+    SPECTRUM,
+    RAW
+};
+
+DumpDataMode dumpData = DumpDataMode::SPECTRUM;
 boolean autoExposure = true;
 
 #include "Display.h"
@@ -137,19 +144,15 @@ void loop()
         processConsoleInput();
     }
 
-    processData();
-    // SerialUSB.println("#START");
-    // for (int i = 0; i < PIXEL_COUNT / 8; i++)
-    // {
-    //     unsigned long val = 0;
-    //     for (int j = 0; j < 8; j++)
-    //     {
-    //         val = val + buffer[i * 8 + j];
-    //     }
-    //     SerialUSB.println(val / 8.0, 4);
-    // }
-    // SerialUSB.println("#END");
+    if (dumpData == DumpDataMode::RAW)
+    {
+        for (int i = 0; i < PIXEL_COUNT; i++)
+        {
+            SerialUSB.println(buffer[i]);
+        }
+    }
 
+    processData();
 
     readCCD();
 
@@ -326,7 +329,7 @@ void processData()
     // Spectrum toProcess = st.transpose(sp);
     st.normalize(sp);
 
-    if (dumpData)
+    if (dumpData == DumpDataMode::SPECTRUM)
     {
         for (auto const& spElement : sp)
         {
@@ -504,13 +507,17 @@ void processConsoleInput()
             autoExposure = true;
         }
     }
-    if (input.startsWith("CON"))
+    if (input.startsWith("DUMP=S"))
     {
-        dumpData = true;
+        dumpData = DumpDataMode::SPECTRUM;
     }
-    if (input.startsWith("COFF"))
+    if (input.startsWith("DUMP=N"))
     {
-        dumpData = true;
+        dumpData = DumpDataMode::OFF;
+    }
+    if (input.startsWith("DUMP=R"))
+    {
+        dumpData = DumpDataMode::RAW;
     }
 }
 

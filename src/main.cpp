@@ -46,7 +46,7 @@ RP2040_PWM * PWM_SH;
 
 uint32_t buffer[PIXEL_COUNT];
 
-int32_t exposureTime = 100, readTime;
+int32_t exposureTime = 500, readTime;
 uint32_t adcFreq;
 uint16_t lowestCCDVoltage;
 
@@ -121,7 +121,7 @@ void setup()
     // measure ADC speed
     adcFreq = measureAdcSpeed() ;
 
-    PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 4, 50);
+    PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 2, 50); // 4 for 1304, 2 for 1254? why? TODO check in datasheet
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
     PWM_CLK->setPWM();
     PWM_ADC_SYNC->setPWM();

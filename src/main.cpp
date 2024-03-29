@@ -15,7 +15,7 @@
 #include "Calibration.h"
 #include "SettingsHelper.h"
 
-#define PIXEL_COUNT 3691
+#define PIXEL_COUNT 2547
 #define MIN_EXPOSURE_TIME 11L
 #define MAX_EXPOSURE_TIME_PWM 133333L
 #define MAX_EXPOSURE_TIME 800000L
@@ -46,7 +46,7 @@ RP2040_PWM * PWM_SH;
 
 uint32_t buffer[PIXEL_COUNT];
 
-int32_t exposureTime = MIN_EXPOSURE_TIME, readTime;
+int32_t exposureTime = 100, readTime;
 uint32_t adcFreq;
 uint16_t lowestCCDVoltage;
 
@@ -75,8 +75,8 @@ enum DumpDataMode
     RAW
 };
 
-DumpDataMode dumpData = DumpDataMode::SPECTRUM;
-boolean autoExposure = true;
+DumpDataMode dumpData = DumpDataMode::RAW;
+boolean autoExposure = false;
 
 #include "Display.h"
 
@@ -119,7 +119,7 @@ void setup()
     sleep_ms(1000);
 
     // measure ADC speed
-    adcFreq = measureAdcSpeed();
+    adcFreq = measureAdcSpeed() ;
 
     PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 4, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
@@ -310,7 +310,7 @@ void processData()
         readTime, micros() - writeStart, waitLoops);
     SerialUSB.print(buf);
     
-    memset(buffer, 0, sizeof(buffer));
+    return;
 
     if (!dataReady) return;
 

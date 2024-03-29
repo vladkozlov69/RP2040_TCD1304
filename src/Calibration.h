@@ -62,7 +62,7 @@ Approximator * blueApproximator = NULL;
 
 float getWavelength(uint16_t pixel)
 {
-    if (pixel >= CALIBRATION_GREEN_PIXEL)
+    if (pixel >= CALIBRATION_GREEN_PIXEL && CALIBRATION_BLUE_PIXEL > CALIBRATION_GREEN_PIXEL)
     {
         return blueApproximator->get(pixel);
     }

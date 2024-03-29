@@ -46,7 +46,7 @@ RP2040_PWM * PWM_SH;
 
 uint32_t buffer[PIXEL_COUNT];
 
-int32_t exposureTime = 500, readTime;
+int32_t exposureTime = 100, readTime;
 uint32_t adcFreq;
 uint16_t lowestCCDVoltage;
 
@@ -75,8 +75,8 @@ enum DumpDataMode
     RAW
 };
 
-DumpDataMode dumpData = DumpDataMode::RAW;
-boolean autoExposure = false;
+DumpDataMode dumpData = DumpDataMode::SPECTRUM;
+boolean autoExposure = true;
 
 #include "Display.h"
 
@@ -154,13 +154,27 @@ void loop()
 
     processData();
 
-    readCCD();
+    int avgCount = exposureTime <= 1000 ? 10 : 1;
+
+    for (int i = 0; i < avgCount; i++)
+    {
+        readCCD();
+    }
+
+    if (avgCount > 1) 
+    {
+        for (size_t i = 0; i < PIXEL_COUNT; i++)
+        {
+            buffer[i] = buffer[i] / avgCount;
+        }
+        
+    }
 
     dataReady = false;
 
     // TIN PINS = 2500
     // GOLD = 2700
-    if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2500 || exposureTime == MAX_EXPOSURE_TIME))
+    if (lowestCCDVoltage > 1300 && (lowestCCDVoltage < 2100 || exposureTime == MAX_EXPOSURE_TIME))
     {
         dataReady = true;
     }
@@ -175,7 +189,7 @@ void loop()
             SerialUSB.println(exposureTime);
             exposureTime = MIN_EXPOSURE_TIME;
         } 
-        else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
+        else if (lowestCCDVoltage < 1300 && exposureTime > MIN_EXPOSURE_TIME) 
         {
             // reduce exposure
             SerialUSB.print("#REM lowestCCDVoltage="); 
@@ -187,7 +201,7 @@ void loop()
             SerialUSB.println(K);
             exposureTime = exposureTime * K;
         } 
-        else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
+        else if (lowestCCDVoltage > 1900 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
         {
             // increase exposure   
             SerialUSB.print("#REM lowestCCDVoltage=");
@@ -274,7 +288,11 @@ void processData()
     float sumPerWavelength = 0;
     
     // TODO find i_start and i_end for 380-780 nm and optimize iteration
-    for (int i = getPixelForWavelength(800); i < getPixelForWavelength(360); i++)
+    int pixel800 = getPixelForWavelength(800);
+    int pixel360 = getPixelForWavelength(360);
+    int startPixel = min(pixel360, pixel800);
+    int endPixel = max(pixel360, pixel800);
+    for (int i = startPixel; i < endPixel; i++)
     //for (int i = 0; i < PIXEL_COUNT; ++i)
     {
         // aggregate rounded wavelenghts as we have ~3..4 values per nm
@@ -309,8 +327,6 @@ void processData()
     snprintf(buf, sizeof(buf), "#END readTime=%ld, writeTime=%lu, waitLoops=%lu\r\n", 
         readTime, micros() - writeStart, waitLoops);
     SerialUSB.print(buf);
-    
-    return;
 
     if (!dataReady) return;
 
@@ -400,7 +416,7 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
         }
         
         readVal = adc_read();
-        buffer[x] = readVal;
+        buffer[x] += readVal;
         if (readVal < lowestCCDVoltage) lowestCCDVoltage = readVal;
     }  
 

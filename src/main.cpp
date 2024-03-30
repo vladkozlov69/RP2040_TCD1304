@@ -144,14 +144,6 @@ void loop()
         processConsoleInput();
     }
 
-    if (dumpData == DumpDataMode::RAW)
-    {
-        for (int i = 0; i < PIXEL_COUNT; i++)
-        {
-            SerialUSB.println(buffer[i]);
-        }
-    }
-
     processData();
 
     int avgCount = exposureTime <= 1000 ? 10 : 1;
@@ -166,8 +158,15 @@ void loop()
         for (size_t i = 0; i < PIXEL_COUNT; i++)
         {
             buffer[i] = buffer[i] / avgCount;
+        }  
+    }
+
+    if (dumpData == DumpDataMode::RAW)
+    {
+        for (int i = 0; i < PIXEL_COUNT; i++)
+        {
+            SerialUSB.println(buffer[i]);
         }
-        
     }
 
     dataReady = false;
@@ -292,6 +291,10 @@ void processData()
     int pixel360 = getPixelForWavelength(360);
     int startPixel = min(pixel360, pixel800);
     int endPixel = max(pixel360, pixel800);
+    SerialUSB.print("#REM startPixel:");
+    SerialUSB.print(startPixel);
+    SerialUSB.print(" endPixel:");
+    SerialUSB.println(endPixel);
     for (int i = startPixel; i < endPixel; i++)
     //for (int i = 0; i < PIXEL_COUNT; ++i)
     {

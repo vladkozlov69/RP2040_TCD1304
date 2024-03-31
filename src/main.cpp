@@ -451,7 +451,8 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
         }
         
         readVal = adc_read();
-        buffer[x] += readVal;
+        // FIXME overflow here?
+        buffer[x] = readVal;
         if (readVal < lowestCCDVoltage) lowestCCDVoltage = readVal;
         if (readVal > highestCCDVoltage) highestCCDVoltage = readVal;
     }  

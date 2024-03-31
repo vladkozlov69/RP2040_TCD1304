@@ -15,12 +15,35 @@
 #include "Calibration.h"
 #include "SettingsHelper.h"
 
-#define PIXEL_COUNT 3691
+#ifdef TCD1254
+    #define PIXEL_COUNT 2547
+    #define CLK_ADC_DIVIDER 2
+    #define MAX_EXPOSURE_TIME 800000L
+    #define IDEAL_CCD_ADC_VALUE 1000
+    #define DATAREADY_MIN_CCD_VOLTAGE 1300
+    #define DATAREADY_MAX_CCD_VOLTAGE 2100
+    #define RESET_EXPOSURE_CCD_VOLTAGE 650
+    #define REDUCE_EXPOSURE_CCD_VOLTAGE 1200
+    #define INCREASE_PROP_EXPOSURE_CCD_VOLTAGE 1900
+    #define INCREASE_X4_EXPOSURE_CCD_VOLTAGE 1400
+#else
+    #define PIXEL_COUNT 3691
+    #define CLK_ADC_DIVIDER 4
+    #define MAX_EXPOSURE_TIME 800000L
+    #define IDEAL_CCD_ADC_VALUE 1600
+    #define DATAREADY_MIN_CCD_VOLTAGE 1400
+    #define DATAREADY_MAX_CCD_VOLTAGE 2500
+    #define RESET_EXPOSURE_CCD_VOLTAGE 1100
+    #define REDUCE_EXPOSURE_CCD_VOLTAGE 1600
+    #define INCREASE_PROP_EXPOSURE_CCD_VOLTAGE 2200
+    #define INCREASE_X4_EXPOSURE_CCD_VOLTAGE 1600
+#endif
+
 #define MIN_EXPOSURE_TIME 11L
 #define MAX_EXPOSURE_TIME_PWM 133333L
-#define MAX_EXPOSURE_TIME 800000L
+
 #define MAX_CCD_ADC_VALUE 3000
-#define IDEAL_CCD_ADC_VALUE 1600
+
 
 #define CAPTURE_CHANNEL 0
 #define CLOCK_DIV 96
@@ -46,9 +69,10 @@ RP2040_PWM * PWM_SH;
 
 uint32_t buffer[PIXEL_COUNT];
 
-int32_t exposureTime = MIN_EXPOSURE_TIME, readTime;
+int32_t exposureTime = 100, readTime;
 uint32_t adcFreq;
-uint16_t lowestCCDVoltage;
+uint16_t lowestCCDVoltage, highestCCDVoltage;
+
 
 uint32_t waitLoops;
 
@@ -119,9 +143,9 @@ void setup()
     sleep_ms(1000);
 
     // measure ADC speed
-    adcFreq = measureAdcSpeed();
+    adcFreq = measureAdcSpeed() ;
 
-    PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 4, 50);
+    PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * CLK_ADC_DIVIDER, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
     PWM_CLK->setPWM();
     PWM_ADC_SYNC->setPWM();
@@ -144,6 +168,29 @@ void loop()
         processConsoleInput();
     }
 
+    processData();
+
+    int avgCount = exposureTime <= 1000 
+        ? 20 
+        : exposureTime < 10000 
+            ? 10
+            : exposureTime < 100000 
+                ? 5
+                : 1;
+
+    for (int i = 0; i < avgCount; i++)
+    {
+        readCCD();
+    }
+
+    if (avgCount > 1) 
+    {
+        for (size_t i = 0; i < PIXEL_COUNT; i++)
+        {
+            buffer[i] = buffer[i] / avgCount;
+        }  
+    }
+
     if (dumpData == DumpDataMode::RAW)
     {
         for (int i = 0; i < PIXEL_COUNT; i++)
@@ -152,21 +199,17 @@ void loop()
         }
     }
 
-    processData();
-
-    readCCD();
-
     dataReady = false;
 
     // TIN PINS = 2500
     // GOLD = 2700
-    if (lowestCCDVoltage > 1400 && (lowestCCDVoltage < 2500 || exposureTime == MAX_EXPOSURE_TIME))
+    if (lowestCCDVoltage > DATAREADY_MIN_CCD_VOLTAGE && (lowestCCDVoltage < DATAREADY_MAX_CCD_VOLTAGE || exposureTime == MAX_EXPOSURE_TIME))
     {
         dataReady = true;
     }
     else if (autoExposure) 
     {
-        if (lowestCCDVoltage < 1100) 
+        if (lowestCCDVoltage < RESET_EXPOSURE_CCD_VOLTAGE) 
         {
             // reset exposure
             SerialUSB.print("#REM lowestCCDVoltage=");
@@ -175,7 +218,7 @@ void loop()
             SerialUSB.println(exposureTime);
             exposureTime = MIN_EXPOSURE_TIME;
         } 
-        else if (lowestCCDVoltage < 1600 && exposureTime > MIN_EXPOSURE_TIME) 
+        else if (lowestCCDVoltage < REDUCE_EXPOSURE_CCD_VOLTAGE && exposureTime > MIN_EXPOSURE_TIME) 
         {
             // reduce exposure
             SerialUSB.print("#REM lowestCCDVoltage="); 
@@ -187,7 +230,7 @@ void loop()
             SerialUSB.println(K);
             exposureTime = exposureTime * K;
         } 
-        else if (lowestCCDVoltage > 2200 && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
+        else if (lowestCCDVoltage > INCREASE_X4_EXPOSURE_CCD_VOLTAGE && exposureTime < MAX_EXPOSURE_TIME && exposureTime < MIN_EXPOSURE_TIME * 4)
         {
             // increase exposure   
             SerialUSB.print("#REM lowestCCDVoltage=");
@@ -197,7 +240,7 @@ void loop()
             exposureTime = exposureTime * 4;
             
         }
-        else if (lowestCCDVoltage > 1600 && exposureTime < MAX_EXPOSURE_TIME )
+        else if (lowestCCDVoltage > INCREASE_PROP_EXPOSURE_CCD_VOLTAGE && exposureTime < MAX_EXPOSURE_TIME )
         {
             SerialUSB.print("#REM lowestCCDVoltage="); 
             SerialUSB.print(lowestCCDVoltage);
@@ -236,8 +279,8 @@ void loop()
 void processData()
 {
     unsigned long writeStart = micros();
-    snprintf(buf, sizeof(buf), "#START adcF=%lu, lowestCCDVoltage=%d, exposureTime=%ld, C=%d|%d|%d\r\n", 
-        adcFreq, lowestCCDVoltage, exposureTime, 
+    snprintf(buf, sizeof(buf), "#START adcF=%lu, lowestCCDVoltage=%d, highestCCDVoltage=%d, exposureTime=%ld, C=%d|%d|%d\r\n", 
+        adcFreq, lowestCCDVoltage, highestCCDVoltage, exposureTime, 
         CALIBRATION_BLUE_PIXEL, CALIBRATION_GREEN_PIXEL, CALIBRATION_RED_PIXEL);
     SerialUSB.print(buf);
 
@@ -273,9 +316,15 @@ void processData()
     int countWavelength = 0;
     float sumPerWavelength = 0;
     
-    // TODO find i_start and i_end for 380-780 nm and optimize iteration
-    for (int i = getPixelForWavelength(800); i < getPixelForWavelength(360); i++)
-    //for (int i = 0; i < PIXEL_COUNT; ++i)
+    int pixel800 = getPixelForWavelength(800);
+    int pixel360 = getPixelForWavelength(360);
+    int startPixel = min(pixel360, pixel800);
+    int endPixel = max(pixel360, pixel800);
+    // SerialUSB.print("#REM startPixel:");
+    // SerialUSB.print(startPixel);
+    // SerialUSB.print(" endPixel:");
+    // SerialUSB.println(endPixel);
+    for (int i = startPixel; i < endPixel; i++)
     {
         // aggregate rounded wavelenghts as we have ~3..4 values per nm
         int waveLenght = (int) getWavelength(i) / 2;
@@ -306,16 +355,11 @@ void processData()
         sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
     }
 
-    snprintf(buf, sizeof(buf), "#END readTime=%ld, writeTime=%lu, waitLoops=%lu\r\n", 
-        readTime, micros() - writeStart, waitLoops);
+    snprintf(buf, sizeof(buf), "#END readTime=%ld, writeTime=%lu, waitLoops=%lu, spLen=%d\r\n", 
+        readTime, micros() - writeStart, waitLoops, sp.size());
     SerialUSB.print(buf);
-    
-    memset(buffer, 0, sizeof(buffer));
 
     if (!dataReady) return;
-
-    SerialUSB.print("#REM Orig SP:");
-    SerialUSB.println(sp.size());
 
     // for (auto const& spElement : sp)
     // {
@@ -340,13 +384,19 @@ void processData()
     XY XYcoord = st.calcXY(sp);
     float CCT = st.calcCCT(XYcoord);
 
-    SerialUSB.print("#REM CCT=");
-    SerialUSB.println(CCT);
+    if (CCT > 8000)
+    {
+        dataReady = false;
+        return;
+    }
+
+    // SerialUSB.print("#REM CCT=");
+    // SerialUSB.println(CCT);
 
     float DUV = st.calcDUV(XYcoord);
 
-    SerialUSB.print("#REM DUV=");
-    SerialUSB.println(DUV, 6);
+    // SerialUSB.print("#REM DUV=");
+    // SerialUSB.println(DUV, 6);
 
     memset(ri, 0, sizeof(ri));
     st.calcCRI(sp, ri);
@@ -385,6 +435,7 @@ void processData()
 
 uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
 {
+    highestCCDVoltage = 0;
     lowestCCDVoltage = 4096;
     uint16_t readVal;
     uint32_t started = micros();
@@ -400,8 +451,9 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
         }
         
         readVal = adc_read();
-        buffer[x] = readVal;
+        buffer[x] += readVal;
         if (readVal < lowestCCDVoltage) lowestCCDVoltage = readVal;
+        if (readVal > highestCCDVoltage) highestCCDVoltage = readVal;
     }  
 
     return micros() - started;  

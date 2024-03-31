@@ -384,7 +384,7 @@ void processData()
     XY XYcoord = st.calcXY(sp);
     float CCT = st.calcCCT(XYcoord);
 
-    if (CCT > 8000)
+    if (CCT > 6000)
     {
         dataReady = false;
         return;

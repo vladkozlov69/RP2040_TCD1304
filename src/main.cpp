@@ -384,6 +384,12 @@ void processData()
     XY XYcoord = st.calcXY(sp);
     float CCT = st.calcCCT(XYcoord);
 
+    if (CCT > 8000)
+    {
+        dataReady = false;
+        return;
+    }
+
     // SerialUSB.print("#REM CCT=");
     // SerialUSB.println(CCT);
 

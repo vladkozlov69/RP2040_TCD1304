@@ -15,12 +15,35 @@
 #include "Calibration.h"
 #include "SettingsHelper.h"
 
-#define PIXEL_COUNT 2547
+#ifdef TCD1254
+    #define PIXEL_COUNT 2547
+    #define CLK_ADC_DIVIDER 2
+    #define MAX_EXPOSURE_TIME 1200000L
+    #define IDEAL_CCD_ADC_VALUE 1000
+    #define DATAREADY_MIN_CCD_VOLTAGE 1300
+    #define DATAREADY_MAX_CCD_VOLTAGE 2100
+    #define RESET_EXPOSURE_CCD_VOLTAGE 1000
+    #define REDUCE_EXPOSURE_CCD_VOLTAGE 1200
+    #define INCREASE_PROP_EXPOSURE_CCD_VOLTAGE 1900
+    #define INCREASE_X4_EXPOSURE_CCD_VOLTAGE 1400
+#else
+    #define PIXEL_COUNT 3691
+    #define CLK_ADC_DIVIDER 4
+    #define MAX_EXPOSURE_TIME 800000L
+    #define IDEAL_CCD_ADC_VALUE 1600
+    #define DATAREADY_MIN_CCD_VOLTAGE 1400
+    #define DATAREADY_MAX_CCD_VOLTAGE 2500
+    #define RESET_EXPOSURE_CCD_VOLTAGE 1100
+    #define REDUCE_EXPOSURE_CCD_VOLTAGE 1600
+    #define INCREASE_PROP_EXPOSURE_CCD_VOLTAGE 2200
+    #define INCREASE_X4_EXPOSURE_CCD_VOLTAGE 1600
+#endif
+
 #define MIN_EXPOSURE_TIME 11L
 #define MAX_EXPOSURE_TIME_PWM 133333L
-#define MAX_EXPOSURE_TIME 800000L
+
 #define MAX_CCD_ADC_VALUE 3000
-#define IDEAL_CCD_ADC_VALUE 1600
+
 
 #define CAPTURE_CHANNEL 0
 #define CLOCK_DIV 96
@@ -121,7 +144,7 @@ void setup()
     // measure ADC speed
     adcFreq = measureAdcSpeed() ;
 
-    PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * 2, 50); // 4 for 1304, 2 for 1254? why? TODO check in datasheet
+    PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * CLK_ADC_DIVIDER, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
     PWM_CLK->setPWM();
     PWM_ADC_SYNC->setPWM();
@@ -146,7 +169,13 @@ void loop()
 
     processData();
 
-    int avgCount = exposureTime <= 1000 ? 10 : 1;
+    int avgCount = exposureTime <= 1000 
+        ? 20 
+        : exposureTime < 10000 
+            ? 10
+            : exposureTime < 100000 
+                ? 5
+                : 1;
 
     for (int i = 0; i < avgCount; i++)
     {
@@ -173,13 +202,13 @@ void loop()
 
     // TIN PINS = 2500
     // GOLD = 2700
-    if (lowestCCDVoltage > 1300 && (lowestCCDVoltage < 2100 || exposureTime == MAX_EXPOSURE_TIME))
+    if (lowestCCDVoltage > DATAREADY_MIN_CCD_VOLTAGE && (lowestCCDVoltage < DATAREADY_MAX_CCD_VOLTAGE || exposureTime == MAX_EXPOSURE_TIME))
     {
         dataReady = true;
     }
     else if (autoExposure) 
     {
-        if (lowestCCDVoltage < 1100) 
+        if (lowestCCDVoltage < RESET_EXPOSURE_CCD_VOLTAGE) 
         {
             // reset exposure
             SerialUSB.print("#REM lowestCCDVoltage=");
@@ -188,7 +217,7 @@ void loop()
             SerialUSB.println(exposureTime);
             exposureTime = MIN_EXPOSURE_TIME;
         } 
-        else if (lowestCCDVoltage < 1300 && exposureTime > MIN_EXPOSURE_TIME) 
+        else if (lowestCCDVoltage < INCREASE_PROP_EXPOSURE_CCD_VOLTAGE && exposureTime > MIN_EXPOSURE_TIME) 
         {
             // reduce exposure
             SerialUSB.print("#REM lowestCCDVoltage="); 

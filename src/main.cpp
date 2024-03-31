@@ -58,6 +58,7 @@
 #define BITCLR_ADC_READ     gpio_put(ADC_FLAG_PIN, 0)
 #define BITREAD_ADC_SYNC    gpio_get(ADC_SYNC_PIN)
 #define BITREAD_SH_SYNC     gpio_get(SH_PIN)
+#define BITREAD_CLK_SYNC    gpio_get(CLK_PIN)
 
 RP2040_PWM * PWM_CLK;
 RP2040_PWM * PWM_ADC_SYNC;
@@ -465,6 +466,7 @@ uint32_t measureAdcSpeed()
 
 void readCCD(void)
 {
+    //*: To keep CLK “H” level when ICG switch from “L” to “H” level.
 #ifdef USE_SH_PWM
     if (exposureTime <= MAX_EXPOSURE_TIME_PWM)
     {
@@ -475,6 +477,8 @@ void readCCD(void)
         delayMicroseconds(15);
         while (BITREAD_SH_SYNC == 1) waitLoops++; 
         while (BITREAD_SH_SYNC == 0) waitLoops++;
+        while (BITREAD_CLK_SYNC == 0) waitLoops++; 
+        while (BITREAD_CLK_SYNC == 1) waitLoops++;
         BITSET_ICG;
         delayMicroseconds(1);
     }
@@ -487,6 +491,8 @@ void readCCD(void)
         delayMicroseconds(5);
         BITCLR_SH;
         delayMicroseconds(15);
+        while (BITREAD_CLK_SYNC == 0) waitLoops++; 
+        while (BITREAD_CLK_SYNC == 1) waitLoops++;
         BITSET_ICG;
         delayMicroseconds(1);
     }

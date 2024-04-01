@@ -101,6 +101,7 @@ enum DumpDataMode
 
 DumpDataMode dumpData = DumpDataMode::SPECTRUM;
 boolean autoExposure = true;
+int avgCount = 1;
 
 #include "Display.h"
 
@@ -170,11 +171,11 @@ void loop()
 
     processData();
 
-    int avgCount = exposureTime <= 1000 
+    avgCount = exposureTime <= 1000 
         ? 20 
         : exposureTime < 10000 
             ? 10
-            : exposureTime < 100000 
+            : exposureTime < MAX_EXPOSURE_TIME_PWM 
                 ? 5
                 : 1;
 
@@ -451,8 +452,14 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
         }
         
         readVal = adc_read();
-        // FIXME overflow here?
-        buffer[x] = readVal;
+        if (avgCount > 1)
+        {
+            buffer[x] += readVal;
+        }
+        else
+        {
+            buffer[x] = readVal;
+        }
         if (readVal < lowestCCDVoltage) lowestCCDVoltage = readVal;
         if (readVal > highestCCDVoltage) highestCCDVoltage = readVal;
     }  

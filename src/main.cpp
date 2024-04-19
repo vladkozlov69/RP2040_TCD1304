@@ -80,7 +80,7 @@ uint32_t measureAdcSpeed();
 void setupTimer(PinName pin, uint32_t ovfCounter);
 void readCCD(void);
 void processData();
-void readCalibration();
+void readSettings();
 bool dataReady;
 
 char buf[250];
@@ -94,9 +94,9 @@ SettingsHelper sh;
 
 enum DumpDataMode
 {
-    OFF,
-    SPECTRUM,
-    RAW
+    OFF = 0,
+    SPECTRUM = 1,
+    RAW = 2
 };
 
 DumpDataMode dumpData = DumpDataMode::SPECTRUM;
@@ -116,7 +116,7 @@ void setup()
         SerialUSB.println("LITTLEFS Mount Failed");
     }
 
-    readCalibration();
+    readSettings();
    
 
     SPI = MbedSPI(PICO_DEFAULT_SPI_RX_PIN, 
@@ -536,7 +536,7 @@ void updateCalibrationPoint(const char * param, int value)
     sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
     sh.putInt(param, value);
     sh.end();
-    readCalibration();
+    readSettings();
 }
 
 void processConsoleInput()
@@ -586,12 +586,13 @@ void processConsoleInput()
     }
 }
 
-void readCalibration()
+void readSettings()
 {
     sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
     CALIBRATION_BLUE_PIXEL = sh.getInt("C405", CALIBRATION_BLUE_PIXEL);
     CALIBRATION_GREEN_PIXEL = sh.getInt("C532", CALIBRATION_GREEN_PIXEL);
     CALIBRATION_RED_PIXEL = sh.getInt("C650", CALIBRATION_RED_PIXEL);
+    dumpData = (DumpDataMode) sh.getInt("DUMP", DumpDataMode::SPECTRUM);
     sh.end();
     if (redApproximator)
     {

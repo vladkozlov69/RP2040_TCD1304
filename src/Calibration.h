@@ -72,16 +72,21 @@ float getWavelength(uint16_t pixel)
     }
 }
 
-int getPixelForWavelength(float wavelength)
+int getPixelForWavelength(float wavelength, int maxPixel)
 {
+    int result;
     if (wavelength <= CALIBRATION_GREEN_WAVELENGTH)
     {
-        return blueApproximator->getArgument(wavelength);
+        result = blueApproximator->getArgument(wavelength);
     }
     else
     {
-        return redApproximator->getArgument(wavelength);
+        result = redApproximator->getArgument(wavelength);
     }
+
+    if (result < 0) result = 0;
+    if (result > maxPixel) result = maxPixel;
+    return result;
 }
 
 // TODO cache a, b in record

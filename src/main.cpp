@@ -296,6 +296,8 @@ void processData()
         }
     }
 
+    // SerialUSB.println("Normalized");
+
     for (int i = 0; i < PIXEL_COUNT; i++)
     {
         buffer[i] = maxVoltage - buffer[i];
@@ -312,49 +314,77 @@ void processData()
         }
     }
 
+    // SerialUSB.println("MinMax done");
+
     sp.clear();
-    int prevWavelength = 0;
-    int countWavelength = 0;
-    float sumPerWavelength = 0;
+    // int prevWavelength = 0;
+    // int countWavelength = 0;
+    // float sumPerWavelength = 0;
     
-    int pixel800 = getPixelForWavelength(800);
-    int pixel360 = getPixelForWavelength(360);
-    int startPixel = min(pixel360, pixel800);
-    int endPixel = max(pixel360, pixel800);
+    // int pixel780 = getPixelForWavelength(780, PIXEL_COUNT - 1);
+    // int pixel380 = getPixelForWavelength(380, PIXEL_COUNT - 1);
+    // int startPixel = min(pixel360, pixel780);
+    // int endPixel = max(pixel360, pixel780);
     // SerialUSB.print("#REM startPixel:");
     // SerialUSB.print(startPixel);
     // SerialUSB.print(" endPixel:");
     // SerialUSB.println(endPixel);
-    for (int i = startPixel; i < endPixel; i++)
+    // SerialUSB.println("Processing...");
+    for (int wl0 = 380 / 2; wl0 <= 780 / 2; wl0++)
     {
-        // aggregate rounded wavelenghts as we have ~3..4 values per nm
-        int waveLenght = (int) getWavelength(i) / 2;
-        if (prevWavelength == waveLenght)
+        int wl = wl0 * 2;
+        int countWavelength = 0;
+        float sumPerWavelength = 0;
+        int start = getPixelForWavelength(wl, PIXEL_COUNT - 1);
+        int end = getPixelForWavelength(wl+2, PIXEL_COUNT - 1);
+        // SerialUSB.println(String(wl) + ": " + start + " ... " + end);
+        for (int i = start; i < end; i++)
         {
-            countWavelength++;
             sumPerWavelength += buffer[i];
+            countWavelength++;
+        }
+        if (countWavelength > 0)
+        {
+            sumPerWavelength = sumPerWavelength/countWavelength;
         }
         else
         {
-            if (prevWavelength > 0 && countWavelength > 0)
-            {
-                if (prevWavelength >= (380/2) && prevWavelength <= (780/2))
-                {
-                    float coef = getTCD1304Coef(prevWavelength*2);
-                    sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
-                }
-            }
-            prevWavelength = waveLenght;
-            countWavelength = 1;
-            sumPerWavelength = buffer[i];    
+            sumPerWavelength = 0;
         }
-    }
 
-    if (prevWavelength >= 380/2 && prevWavelength <= 780/2)
-    {
-        float coef = getTCD1304Coef(prevWavelength*2);
-        sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
+        float coef = getTCD1304Coef(wl);
+        sp.insert({wl, coef * sumPerWavelength});
     }
+    // for (int i = startPixel; i < endPixel; i++)
+    // {
+    //     // aggregate rounded wavelenghts as we have ~3..4 values per nm
+    //     int waveLenght = (int) getWavelength(i) / 2;
+    //     if (prevWavelength == waveLenght)
+    //     {
+    //         countWavelength++;
+    //         sumPerWavelength += buffer[i];
+    //     }
+    //     else
+    //     {
+    //         if (prevWavelength > 0 && countWavelength > 0)
+    //         {
+    //             if (prevWavelength >= (380/2) && prevWavelength <= (780/2))
+    //             {
+    //                 float coef = getTCD1304Coef(prevWavelength*2);
+    //                 sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
+    //             }
+    //         }
+    //         prevWavelength = waveLenght;
+    //         countWavelength = 1;
+    //         sumPerWavelength = buffer[i];    
+    //     }
+    // }
+
+    // if (prevWavelength >= 380/2 && prevWavelength <= 780/2)
+    // {
+    //     float coef = getTCD1304Coef(prevWavelength*2);
+    //     sp.insert({prevWavelength*2, coef * sumPerWavelength/countWavelength});
+    // }
 
     snprintf(buf, sizeof(buf), "#END readTime=%ld, writeTime=%lu, waitLoops=%lu, spLen=%d\r\n", 
         readTime, micros() - writeStart, waitLoops, sp.size());

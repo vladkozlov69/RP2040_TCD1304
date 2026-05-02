@@ -1,7 +1,11 @@
 /****************************************************************************************************************************
   RP2040 driver for TCD1304
 
-  Written by Vladimir Kozlov https://github.com/vladkozlov69/RP2040_TCD1304
+  This firmware implements a high-speed driver for the Toshiba TCD1304 (or TCD1254) 
+  linear CCD sensor using the Raspberry Pi RP2040. It handles hardware timing via 
+  PWM, ADC data acquisition, spectral analysis (CRI, CCT, Duv), and local display.
+
+  Author: Vladimir Kozlov https://github.com/vladkozlov69/RP2040_TCD1304
   Licensed under MIT license
 *****************************************************************************************************************************/
 
@@ -19,6 +23,7 @@
 #define MAX_EXPOSURE_TIME_PWM 133333L
 #define MAX_CCD_ADC_VALUE 3000
 
+// Sensor-specific constants based on the model used
 #ifdef TCD1254
     #define PIXEL_COUNT 2547
     #define CLK_ADC_DIVIDER 2
@@ -44,11 +49,13 @@
 #endif
 
 
+// Hardware configuration for ADC and System Clock
 #define CAPTURE_CHANNEL 0
 #define CLOCK_DIV 96
 #define LED_PIN LED_BUILTIN
 
 #define ADC_FLAG_PIN    LED_PIN
+
 
 #define BITSET_SH           gpio_put(SH_PIN, 1)
 #define BITCLR_SH           gpio_put(SH_PIN, 0)
@@ -60,6 +67,7 @@
 #define BITREAD_SH_SYNC     gpio_get(SH_PIN)
 #define BITREAD_CLK_SYNC    gpio_get(CLK_PIN)
 
+// Hardware PWM instances for CCD clocks and synchronization
 RP2040_PWM * PWM_CLK;
 RP2040_PWM * PWM_ADC_SYNC;
 
@@ -67,10 +75,12 @@ RP2040_PWM * PWM_ADC_SYNC;
 RP2040_PWM * PWM_SH;
 #endif
 
+// Data buffer to hold raw ADC readings for each pixel
 uint32_t buffer[PIXEL_COUNT];
 
 int32_t exposureTime = 100, readTime;
 uint32_t adcFreq;
+// Stats for the current frame
 uint16_t lowestCCDVoltage, highestCCDVoltage;
 
 
@@ -86,13 +96,14 @@ bool dataReady;
 char buf[250];
 
 Spectrum sp;
-SpectralTool st;
+SpectralTool st; // Toolset for colorimetry calculations
 RI ri;
 
 LittleFS_MBED *myFS;
 SettingsHelper sh;
 
 enum DumpDataMode
+/** Determines what data is sent over the Serial link */
 {
     OFF = 0,
     SPECTRUM = 1,
@@ -135,17 +146,17 @@ void setup()
     pinMode(LED_PIN, OUTPUT);
     digitalWrite(LED_PIN, HIGH);
 
-
+    // Initialize hardware ADC
     adc_gpio_init(ADC_PIN + CAPTURE_CHANNEL);
     adc_init();
     adc_select_input(CAPTURE_CHANNEL);
     adc_set_clkdiv(CLOCK_DIV);
 
     sleep_ms(1000);
-
-    // measure ADC speed
+    
+    // Calculate the actual ADC frequency for clock synchronization
     adcFreq = measureAdcSpeed() ;
-
+    // Start PWM generators for master clock and ADC sampling sync
     PWM_CLK = new RP2040_PWM(CLK_PIN, adcFreq * CLK_ADC_DIVIDER, 50);
     PWM_ADC_SYNC = new RP2040_PWM(ADC_SYNC_PIN, adcFreq, 50);
     PWM_CLK->setPWM();
@@ -164,14 +175,16 @@ void processConsoleInput();
 
 void loop() 
 {
+    // Check for incoming serial commands (e.g., calibration or exposure settings)
     if (SerialUSB.available())
     {
         processConsoleInput();
     }
-
+    // Analyze the last captured frame
     processData();
 
-    avgCount = exposureTime <= 1000 
+    // Determine averaging count based on exposure to maintain frame rate
+    avgCount = exposureTime <= 1000  
         ? 20 
         : exposureTime < 10000 
             ? 10
@@ -179,11 +192,13 @@ void loop()
                 ? 5
                 : 1;
 
+    // Accumulate frames
     for (int i = 0; i < avgCount; i++)
     {
         readCCD();
     }
-
+    
+    // Calculate mean values per pixel if averaging was used
     if (avgCount > 1) 
     {
         for (size_t i = 0; i < PIXEL_COUNT; i++)
@@ -192,6 +207,7 @@ void loop()
         }  
     }
 
+    // Output raw ADC data if requested
     if (dumpData == DumpDataMode::RAW)
     {
         for (int i = 0; i < PIXEL_COUNT; i++)
@@ -202,6 +218,7 @@ void loop()
 
     dataReady = false;
 
+    // Determine if the captured frame is valid for spectral processing
     // TIN PINS = 2500
     // GOLD = 2700
     if (lowestCCDVoltage > DATAREADY_MIN_CCD_VOLTAGE && (lowestCCDVoltage < DATAREADY_MAX_CCD_VOLTAGE || exposureTime == MAX_EXPOSURE_TIME))
@@ -210,6 +227,7 @@ void loop()
     }
     else if (autoExposure) 
     {
+        // Auto-exposure state machine logic
         if (lowestCCDVoltage < RESET_EXPOSURE_CCD_VOLTAGE) 
         {
             // reset exposure
@@ -259,6 +277,7 @@ void loop()
     }
 
 #ifdef USE_SH_PWM
+    // Update SH clock frequency if using hardware PWM for electronic shutter
     if (exposureTime <= MAX_EXPOSURE_TIME_PWM)
     {
         PWM_SH->enablePWM();
@@ -277,6 +296,13 @@ void loop()
 #endif
 }
 
+/**
+ * Processes the raw CCD data in the buffer:
+ * 1. Normalizes the values.
+ * 2. Maps pixels to wavelengths using calibration data.
+ * 3. Calculates Color Rendering Index (CRI) and Correlated Color Temperature (CCT).
+ * 4. Updates the local display.
+ */
 void processData()
 {
     unsigned long writeStart = micros();
@@ -285,7 +311,7 @@ void processData()
         CALIBRATION_BLUE_PIXEL, CALIBRATION_GREEN_PIXEL, CALIBRATION_RED_PIXEL);
     SerialUSB.print(buf);
 
-    // normalize values
+    // Normalize values to remove sensor DC offset
     uint32_t maxVoltage = 0, maxVal = 0, minVal = 10000;
     size_t maxPos = 0, minPos = 0;
     for (int i = 0; i < PIXEL_COUNT; i++)
@@ -332,6 +358,7 @@ void processData()
     // SerialUSB.println("Processing...");
     for (int wl0 = 380 / 2; wl0 <= 780 / 2; wl0++)
     {
+        // Using 2nm increments
         int wl = wl0 * 2;
         int countWavelength = 0;
         float sumPerWavelength = 0;
@@ -352,6 +379,7 @@ void processData()
             sumPerWavelength = 0;
         }
 
+        // Apply sensor spectral response correction
         float coef = getTCD1304Coef(wl);
         sp.insert({wl, coef * sumPerWavelength});
     }
@@ -412,9 +440,13 @@ void processData()
         }
     }
 
+    if (!dataReady) return;
+
+    // Perform colorimetric calculations
     XY XYcoord = st.calcXY(sp);
     float CCT = st.calcCCT(XYcoord);
 
+    // Ignore invalid light measurements
     if (CCT > 6000)
     {
         dataReady = false;
@@ -448,6 +480,7 @@ void processData()
         (int)CCT, (int)Ra, (int)Re, minVal, minPos, maxVal, maxPos);
     SerialUSB.println(buf);
 
+    // Render info to screen, alternating between table and graph view
     displayBasicInfo(Ra, Re, CCT, DUV);
     if (millis() - screenTimer >= 3000)
     {
@@ -464,6 +497,10 @@ void processData()
     }
 }
 
+/**
+ * Low-level loop to sample the ADC. 
+ * Can optionally synchronize with the hardware PWM clock.
+ */
 uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
 {
     highestCCDVoltage = 0;
@@ -497,15 +534,18 @@ uint32_t readCCDInternal(int pixelsToRead, bool sync=false)
     return micros() - started;  
 }
 
+/** Calibrates the read speed based on the ADC settings */
 uint32_t measureAdcSpeed()
 {
     return 1000000UL * 1000 / readCCDInternal(1000);
 }
 
+/** Triggers a CCD readout by pulsing ICG and SH in the correct sequence. */
 void readCCD(void)
 {
     //*: To keep CLK “H” level when ICG switch from “L” to “H” level.
 #ifdef USE_SH_PWM
+    // Hardware timing using PWM synchronization
     if (exposureTime <= MAX_EXPOSURE_TIME_PWM)
     {
         while (BITREAD_SH_SYNC == 1) waitLoops++; 
@@ -522,6 +562,7 @@ void readCCD(void)
     }
     else
     {
+        // Long exposure manual bit-banging
         delayMicroseconds(2);
         BITCLR_ICG;
         delayMicroseconds(1);
@@ -535,6 +576,7 @@ void readCCD(void)
         delayMicroseconds(1);
     }
 #else
+    // Software-only timing logic
     if (exposureTime < readTime)
     {
         for (int i = 0; i < 200000 / exposureTime; i++)
@@ -561,6 +603,7 @@ void readCCD(void)
     BITCLR_ADC_READ;
 }
 
+/** Updates calibration data in the flash memory */
 void updateCalibrationPoint(const char * param, int value)
 {
     sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
@@ -569,6 +612,7 @@ void updateCalibrationPoint(const char * param, int value)
     readSettings();
 }
 
+/** Parses incoming Serial commands for dynamic configuration */
 void processConsoleInput()
 {
     String input = SerialUSB.readString();
@@ -616,6 +660,7 @@ void processConsoleInput()
     }
 }
 
+/** Loads persistent settings and initializes wavelength mapping interpolators */
 void readSettings()
 {
     sh.begin(MBED_LITTLEFS_FILE_PREFIX "/calib.json", &SerialUSB);
@@ -649,6 +694,3 @@ void readSettings()
             CALIBRATION_BLUE_PIXEL, CALIBRATION_BLUE_WAVELENGTH);
     }
 }
-
-
-

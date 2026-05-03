@@ -1,3 +1,10 @@
+/**
+ * Display handling for the RP2040 TCD1304 Spectrometer.
+ * This file manages the UI rendering on an ILI9341 TFT display, including
+ * basic spectral metrics (CCT, CRI) and graphical representations like
+ * CRI bar charts and the Spectral Power Distribution (SPD) graph.
+ */
+
 #include "Adafruit_GFX.h"
 #include "FreeSansBold7pt7b.h"
 #include "FreeSansBold9pt7b.h"
@@ -10,8 +17,13 @@
 
 Adafruit_ILI9341 * tft;
 
+// Vertical start position for the detailed info section
 int16_t detailStartY = 0;
 
+/**
+ * 16-bit 565 colors representing the 15 standard Munsell samples (R1-R15).
+ * These are used to color the bars in the CRI detail view.
+ */
 uint16_t R_COLORS[] = {
     tft->color565(242, 185, 158),
     tft->color565(206, 177, 82),
@@ -30,6 +42,10 @@ uint16_t R_COLORS[] = {
     tft->color565(245, 204, 165)
 };
 
+/**
+ * Displays the primary spectral metrics at the top of the screen.
+ * Includes Ra (Average CRI), Re (Extended CRI), CCT, DUV, and sensor state.
+ */
 void displayBasicInfo(float Ra, float Re, float CCT, float DUV)
 {
     tft->fillRect(0, 0, tft->width() - 1, 28, ILI9341_BLACK);
@@ -44,6 +60,7 @@ void displayBasicInfo(float Ra, float Re, float CCT, float DUV)
     tft->println(Re, 1);
     tft->setFont();
 
+    // Display CCT and DUV
     tft->fillRect(0, 32, tft->width() - 1, 36, ILI9341_BLACK);
     tft->setFont(&FreeSansBold9pt7b);
     tft->setTextSize(1);
@@ -68,6 +85,10 @@ void displayBasicInfo(float Ra, float Re, float CCT, float DUV)
     tft->setFont();
 }
 
+/**
+ * Renders a bar chart showing the individual Color Rendering Indices (R1 through R15).
+ * Bars are colored according to the standard sample colors they represent.
+ */
 void displayDetails1()
 {
     int minY = tft->getCursorY() - 6;
@@ -85,6 +106,7 @@ void displayDetails1()
     barStartX = barStartX + 10;
     barHeight = barHeight - 1;
     int maxBarWidth = tft->width() - barStartX - 1;
+
     for (int q = 0; q < 15; q++) 
     {
         int16_t barStartY = tft->getCursorY() - 7;
@@ -99,6 +121,10 @@ void displayDetails1()
     tft->setFont();
 }
 
+/**
+ * Renders the Spectral Power Distribution (SPD) graph.
+ * This displays intensity per wavelength, with bars colored to match the visible spectrum.
+ */
 void displayDetails2()
 {
     // at this point "sp" has actual spectral power distribution
@@ -111,7 +137,7 @@ void displayDetails2()
                   tft->width() - 1, tft->height() - (minY - 4) - 1, 
                   ILI9341_BLACK);
 
-    // find spectral peak
+    // Find spectral peak to scale the graph Y-axis
     float spPeak = std::accumulate(sp.begin(), sp.end(), 0,
                                    [](float accu,std::pair<const int, double> elem)
     {
@@ -124,12 +150,14 @@ void displayDetails2()
     // }
 
     int itemX = 20;
-    // render spectral distribution
+    // Render spectral distribution as a colored histogram
     for (auto const& spElement : sp)
     {
+        // Calculate color for the specific wavelength
         RGB rgb = st.nmToRgb(spElement.first);
         uint16_t color = tft->color565(rgb.R, rgb.G, rgb.B);
 
+        // Scale height relative to the peak intensity
         int itemHeight = maxBarHeight * spElement.second / spPeak;
         int itemY = minY + (maxBarHeight - itemHeight);
         tft->drawFastVLine(itemX, itemY, itemHeight, color);
